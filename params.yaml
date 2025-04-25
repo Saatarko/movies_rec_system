@@ -1,0 +1,6 @@
+autoencoder:
+  encoding_dim: 64
+  batch_size: 256
+  num_epochs: 100
+  learning_rate: 0.001
+  model_output_path: models/movies_content_autoencoder.pt

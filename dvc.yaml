@@ -1,0 +1,13 @@
+stages:
+  train_autoencoder:
+    cmd: python scripts/train_autoencoder.py
+    deps:
+      - data/processed/movie_vectors_train.npy
+      - scripts/train_autoencoder.py
+    outs:
+      - models/movies_content_autoencoder.pt
+    params:
+      - autoencoder.input_dim
+      - autoencoder.encoding_dim
+      - autoencoder.lr
+      - autoencoder.num_epochs
