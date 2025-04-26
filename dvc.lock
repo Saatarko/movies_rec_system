@@ -1,0 +1,60 @@
+schema: '2.0'
+stages:
+  generate_vectors_stage:
+    cmd: python scripts/data_processing.py
+    deps:
+    - path: data/raw
+      hash: md5
+      md5: a59999018f20fa943c91990de8fc609c.dir
+      size: 1546911633
+      nfiles: 6
+    - path: scripts/data_processing.py
+      hash: md5
+      md5: 2abbd1e90689e01dafe7faf80ffbce87
+      size: 4175
+    outs:
+    - path: data/processed/movie_vectors_scaled_test.npy
+      hash: md5
+      md5: bc0fe87b734bd849874e7714648d511e
+      size: 118169344
+    - path: data/processed/movie_vectors_scaled_train.npy
+      hash: md5
+      md5: 1cebb275c7a65037376a96b079d5e309
+      size: 118169344
+  train_autoencoder:
+    cmd: python scripts/train_autoencoder.py
+    deps:
+    - path: data/processed/movie_vectors_scaled_test.npy
+      hash: md5
+      md5: bc0fe87b734bd849874e7714648d511e
+      size: 118169344
+    - path: data/processed/movie_vectors_scaled_train.npy
+      hash: md5
+      md5: 1cebb275c7a65037376a96b079d5e309
+      size: 118169344
+    - path: scripts/train_autoencoder.py
+      hash: md5
+      md5: baed5360ecc71e8fa81882226ffbdc4f
+      size: 7803
+    params:
+      params.yaml:
+        autoencoder.batch_size: 256
+        autoencoder.encoding_dim: 64
+        autoencoder.num_epochs: 100
+    outs:
+    - path: models/metrics.json
+      hash: md5
+      md5: cfe379e575a8569f48fa979ad06d81a1
+      size: 79
+    - path: models/movie_content_vectors_test.npz
+      hash: md5
+      md5: 646d7e7d1927db87fbe1ce03821f6bfc
+      size: 16730
+    - path: models/movie_content_vectors_train.npz
+      hash: md5
+      md5: efb5ab9f145be548f9ef5fd058795343
+      size: 2500989
+    - path: models/movies_content_autoencoder.pt
+      hash: md5
+      md5: 4dd20722b890792887436d36d168a559
+      size: 4889685

@@ -1,5 +1,6 @@
 from datetime import datetime
 
+import pandas as pd
 import yaml
 from airflow.models import DAG
 from airflow.operators.bash import BashOperator
@@ -7,9 +8,9 @@ from airflow.operators.python import PythonOperator
 
 import sys
 import os
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'scripts')))
 
-
+# Добавляем корень проекта в PYTHONPATH
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # === код автоэнкодера (можно импортировать, если модуль отдельно) ===
 def train_autoencoder():
@@ -17,7 +18,15 @@ def train_autoencoder():
     from scripts.train_autoencoder import content_vector_autoencoder  # импорт своей функции
     from scripts.train_autoencoder import eval_content_train_test_vectors
 
-    train_vectors, test_vectors = generate_content_vector_for_offtest()
+    # Путь к корню проекта
+    PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
+
+    # Загрузка данных
+    genome_tags = pd.read_csv(os.path.join(PROJECT_ROOT, "data", "raw", "genome-tags.csv"))
+    genome_scores = pd.read_csv(os.path.join(PROJECT_ROOT, "data", "raw", "genome-scores.csv"))
+
+    # Передаем загруженные данные в функцию
+    train_vectors, test_vectors = generate_content_vector_for_offtest(genome_scores, genome_tags)
     content_vector_autoencoder(train_vectors)
 
     with open("params.yaml", "r") as f:
@@ -36,7 +45,7 @@ with DAG(
 
     dvc_generate_vectors = BashOperator(
         task_id="generate_vectors_dvc",
-        bash_command="dvc repro generate_vectors_stage"
+        bash_command="cd /home/saatarko/PycharmProjects/movies_rec_system && dvc repro generate_vectors_stage"
     )
 
     run_autoencoder = PythonOperator(

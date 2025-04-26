@@ -1,0 +1,4 @@
+/movies_content_autoencoder.pt
+/movie_content_vectors_train.npz
+/movie_content_vectors_test.npz
+/metrics.json

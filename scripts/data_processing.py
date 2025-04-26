@@ -6,7 +6,6 @@ from transformers import BertTokenizer, BertModel
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler, MaxAbsScaler
-import tensorflow as tf
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.neighbors import NearestNeighbors
 from sklearn.cluster import AgglomerativeClustering
@@ -53,40 +52,53 @@ from scipy.sparse import hstack
 import umap
 
 
-movies = pd.read_csv("data/raw/movies.csv")
-ratings = pd.read_csv("data/raw/ratings.csv")
-tags = pd.read_csv("data/raw/tags.csv")
-genome_tags = pd.read_csv("data/raw/genome-tags.csv")
-genome_scores = pd.read_csv("data/raw/genome-scores.csv")
+# movies = pd.read_csv("data/raw/movies.csv")
+# ratings = pd.read_csv("data/raw/ratings.csv")
+# tags = pd.read_csv("data/raw/tags.csv")
+# genome_tags = pd.read_csv("data/raw/genome-tags.csv")
+# genome_scores = pd.read_csv("data/raw/genome-scores.csv")
+
+
+# Путь к корню проекта (там где data/, scripts/ и так далее)
+PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
+
+# Теперь можно строить пути правильно
+movies = pd.read_csv(os.path.join(PROJECT_ROOT, "data", "raw", "movies.csv"))
+ratings = pd.read_csv(os.path.join(PROJECT_ROOT, "data", "raw", "ratings.csv"))
+tags = pd.read_csv(os.path.join(PROJECT_ROOT, "data", "raw", "tags.csv"))
+genome_tags = pd.read_csv(os.path.join(PROJECT_ROOT, "data", "raw", "genome-tags.csv"))
+genome_scores = pd.read_csv(os.path.join(PROJECT_ROOT, "data", "raw", "genome-scores.csv"))
 importance_df = pd.DataFrame(columns=['movieId', 'importance_score'])
 
-def generate_content_vector_for_offtest():
-
-    global movies, ratings, tags, genome_tags, genome_scores, importance_df
-
-
+def generate_content_vector_for_offtest(genome_scores, genome_tags):
     movie_tag_matrix = genome_scores.pivot(index='movieId', columns='tagId', values='relevance').fillna(0)
 
-    # Добавим к movie_tag_matrix названия тегов
     tag_id_to_name = genome_tags.set_index('tagId')['tag']
     movie_tag_matrix.columns = movie_tag_matrix.columns.map(tag_id_to_name)
 
-    # Вместо сплита по фильмам — сплит по колонкам (тэгам)
     tag_columns = movie_tag_matrix.columns
     tag_train, tag_test = train_test_split(tag_columns, test_size=0.2, random_state=42)
 
-    # Используем один и тот же набор фильмов
     movie_tag_matrix_train = movie_tag_matrix[tag_train]
     movie_tag_matrix_test = movie_tag_matrix[tag_test]
 
-    # Приводим test к той же структуре, что и train
     movie_tag_matrix_test_aligned = movie_tag_matrix_test.reindex(columns=movie_tag_matrix_train.columns, fill_value=0)
 
-    # Теперь всё сработает
     scaler = MinMaxScaler()
     movie_vectors_scaled_train = scaler.fit_transform(movie_tag_matrix_train)
     movie_vectors_scaled_test = scaler.transform(movie_tag_matrix_test_aligned)
 
+    output_dir = os.path.join(PROJECT_ROOT, 'data', 'processed')
+    os.makedirs(output_dir, exist_ok=True)
+
+    print(f"Saving movie_vectors_scaled_train.npy to {output_dir}")
+    np.save(os.path.join(output_dir, 'movie_vectors_scaled_train.npy'), movie_vectors_scaled_train)
+
+    print(f"Saving movie_vectors_scaled_test.npy to {output_dir}")
+    np.save(os.path.join(output_dir, 'movie_vectors_scaled_test.npy'), movie_vectors_scaled_test)
+
+    print("Files saved successfully!")
     return movie_vectors_scaled_train, movie_vectors_scaled_test
 
-
+if __name__ == "__main__":
+    generate_content_vector_for_offtest(genome_scores, genome_tags)

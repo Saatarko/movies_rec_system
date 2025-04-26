@@ -2,12 +2,24 @@ stages:
   train_autoencoder:
     cmd: python scripts/train_autoencoder.py
     deps:
-      - data/processed/movie_vectors_train.npy
-      - scripts/train_autoencoder.py
+    - data/processed/movie_vectors_scaled_train.npy
+    - data/processed/movie_vectors_scaled_test.npy
+    - scripts/train_autoencoder.py
     outs:
-      - models/movies_content_autoencoder.pt
+    - models/movies_content_autoencoder.pt
+    - models/movie_content_vectors_train.npz
+    - models/movie_content_vectors_test.npz
+    metrics:
+    - models/metrics.json
     params:
-      - autoencoder.input_dim
-      - autoencoder.encoding_dim
-      - autoencoder.lr
-      - autoencoder.num_epochs
+    - autoencoder.encoding_dim
+    - autoencoder.num_epochs
+    - autoencoder.batch_size
+  generate_vectors_stage:
+    cmd: python scripts/data_processing.py
+    deps:
+    - data/raw
+    - scripts/data_processing.py
+    outs:
+    - data/processed/movie_vectors_scaled_test.npy
+    - data/processed/movie_vectors_scaled_train.npy
