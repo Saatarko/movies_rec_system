@@ -1,7 +1,5 @@
+import argparse
 import json
-from io import BytesIO
-from pathlib import Path
-
 import torch
 import mlflow
 import mlflow.pytorch
@@ -12,8 +10,12 @@ from torch import nn, optim
 from torch.utils.data import DataLoader, random_split
 import sys, os
 import numpy as np
+
+from utils import get_project_paths
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 mlflow.set_tracking_uri("http://localhost:5000")
+from task_registry import task, main
 
 
 def plot_losses(train_losses, val_losses):
@@ -27,13 +29,8 @@ def plot_losses(train_losses, val_losses):
     plt.grid(True)
     plt.tight_layout()
 
-    # Находим абсолютный путь до директории, где лежит скрипт
-    base_dir = Path(__file__).resolve().parent
-    models_dir = base_dir / "models"
 
-    models_dir.mkdir(parents=True, exist_ok=True)  # Создаём папку models/ если её нет
-
-    plot_path = models_dir / "training_loss_curve.png"
+    plot_path =  "models/training_loss_curve.png"
     plt.savefig(plot_path)
     plt.close()
 
@@ -64,24 +61,28 @@ class MovieAutoencoder(nn.Module):
         z = self.encoder(x)
         return self.decoder(z)
 
-def content_vector_autoencoder(train_data):
+@task("data:movie_autoencoder")
+def content_vector_autoencoder():
     with open("params.yaml", "r") as f:
         config = yaml.safe_load(f)["autoencoder"]
-
+        paths = get_project_paths()
     encoding_dim = config["encoding_dim"]
     batch_size = config["batch_size"]
     num_epochs = config["num_epochs"]
     lr = config["learning_rate"]
     model_path = config["model_output_path"]
 
-    input_dim = train_data.shape[1]
+    movie_vectors_scaled_train = np.load(paths["processed_dir"] / "movie_vectors_scaled_train.npy")
+
+
+    input_dim = movie_vectors_scaled_train.shape[1]
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     model = MovieAutoencoder(input_dim, encoding_dim).to(device)
     optimizer = optim.Adam(model.parameters(), lr=lr)
     criterion = nn.MSELoss()
 
-    X = torch.tensor(train_data, dtype=torch.float32)
+    X = torch.tensor(movie_vectors_scaled_train, dtype=torch.float32)
     train_size = int(0.9 * len(X))
     val_size = len(X) - train_size
     train_dataset, val_dataset = random_split(X, [train_size, val_size])
@@ -144,11 +145,33 @@ def content_vector_autoencoder(train_data):
         plot_path = plot_losses(epoch_train_losses, epoch_val_losses)
         mlflow.log_artifact(str(plot_path))  # Преобразуем в строку для mlflow
 
+        train_metrics = {
+            "best_val_loss": best_val_loss,
+            "final_train_loss": epoch_train_losses[-1],
+            "final_val_loss": epoch_val_losses[-1],
+            "num_epochs": num_epochs
+        }
+
+        # Сохраняем метрики в файл для DVC
+        metrics_path = "models/train_metrics.json"
+        os.makedirs(os.path.dirname(metrics_path), exist_ok=True)
+        with open(metrics_path, "w") as f:
+            json.dump(train_metrics, f, indent=4)
+
     return best_model_state
 
 
-def eval_content_train_test_vectors(model_path, movie_vectors_scaled_train, movie_vectors_scaled_test):
+@task("data:movie_eval_vector")
+def eval_content_train_test_vectors():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    with open("params.yaml", "r") as f:
+        config = yaml.safe_load(f)["autoencoder"]
+        paths = get_project_paths()
+
+    model_path = config["model_output_path"]
+
+    movie_vectors_scaled_train = np.load(paths["processed_dir"] / "movie_vectors_scaled_train.npy")
+    movie_vectors_scaled_test = np.load(paths["processed_dir"] / "movie_vectors_scaled_test.npy")
 
     input_dim = movie_vectors_scaled_train.shape[1]
 
@@ -172,15 +195,15 @@ def eval_content_train_test_vectors(model_path, movie_vectors_scaled_train, movi
     train_mse = mean_squared_error(movie_vectors_scaled_train, train_recon)
     test_mse = mean_squared_error(movie_vectors_scaled_test, test_recon)
 
-    metrics = {
+    eval_metrics = {
         "train_mse": train_mse,
         "test_mse": test_mse
     }
 
     # Сохраняем метрики для DVC
     os.makedirs("models", exist_ok=True)
-    with open("models/metrics.json", "w") as f:
-        json.dump(metrics, f, indent=4)
+    with open("models/eval_metrics.json", "w") as f:
+        json.dump(eval_metrics, f, indent=4)
 
     # Сохраняем content вектора для фильтрации
     np.savez_compressed("models/movie_content_vectors_train.npz", vectors=movie_content_vectors_train)
@@ -191,16 +214,11 @@ def eval_content_train_test_vectors(model_path, movie_vectors_scaled_train, movi
     print(f"Test MSE: {test_mse:.6f}")
     print("Вектора сохранены в 'models/movie_content_vectors_train.npz' и 'models/movie_content_vectors_test.npz'")
 
+
 if __name__ == "__main__":
-    import numpy as np
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--tasks", nargs="+", help="Список задач для выполнения")
+    args = parser.parse_args()
 
-    # Пример загрузки данных — замени на реальные данные
-    from data_processing import generate_content_vector_for_offtest
-    train_vectors, test_vector = generate_content_vector_for_offtest()
-
-    content_vector_autoencoder(train_vectors)
-
-    with open("params.yaml", "r") as f:
-        config = yaml.safe_load(f)["autoencoder"]
-
-    eval_content_train_test_vectors( config["model_output_path"], train_vectors, test_vector)
+    if args.tasks:
+        main(args.tasks)  # Здесь передаем задачи, которые указаны в командной строке

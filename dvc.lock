@@ -1,7 +1,7 @@
 schema: '2.0'
 stages:
   generate_vectors_stage:
-    cmd: python scripts/data_processing.py
+    cmd: python scripts/data_processing.py --tasks data:generate_content_vector
     deps:
     - path: data/raw
       hash: md5
@@ -10,16 +10,16 @@ stages:
       nfiles: 6
     - path: scripts/data_processing.py
       hash: md5
-      md5: 2abbd1e90689e01dafe7faf80ffbce87
-      size: 4175
+      md5: a00fc394dbcdee79eeb262e46b18a76b
+      size: 4448
     outs:
     - path: data/processed/movie_vectors_scaled_test.npy
       hash: md5
-      md5: bc0fe87b734bd849874e7714648d511e
+      md5: 9f21a7c7111ca9409fa5e5038e64e947
       size: 118169344
     - path: data/processed/movie_vectors_scaled_train.npy
       hash: md5
-      md5: 1cebb275c7a65037376a96b079d5e309
+      md5: d138e20c0fd5e107b7f330b3821fc664
       size: 118169344
   train_autoencoder:
     cmd: python scripts/train_autoencoder.py
@@ -58,3 +58,84 @@ stages:
       hash: md5
       md5: 4dd20722b890792887436d36d168a559
       size: 4889685
+  train_autoencoder_stage:
+    cmd: python scripts/train_autoencoder.py --tasks data:movie_autoencoder
+    deps:
+    - path: data/processed/movie_vectors_scaled_test.npy
+      hash: md5
+      md5: 9f21a7c7111ca9409fa5e5038e64e947
+      size: 118169344
+    - path: data/processed/movie_vectors_scaled_train.npy
+      hash: md5
+      md5: d138e20c0fd5e107b7f330b3821fc664
+      size: 118169344
+    - path: scripts/train_autoencoder.py
+      hash: md5
+      md5: 8693ddfb6b49aeaf9a51da9b0e77da8d
+      size: 8422
+    params:
+      params.yaml:
+        autoencoder.batch_size: 256
+        autoencoder.encoding_dim: 64
+        autoencoder.num_epochs: 100
+    outs:
+    - path: models/movies_content_autoencoder.pt
+      hash: md5
+      md5: d497b0d6ce3aabc7c5da55ada4d5a14d
+      size: 4889685
+    - path: models/train_metrics.json
+      hash: md5
+      md5: df30af7057f9e65ca6f6980342f80276
+      size: 158
+  eval_content_train_test_vectors_stage:
+    cmd: python scripts/train_autoencoder.py --tasks data:movie_eval_vector
+    deps:
+    - path: data/processed/movie_vectors_scaled_test.npy
+      hash: md5
+      md5: 9f21a7c7111ca9409fa5e5038e64e947
+      size: 118169344
+    - path: data/processed/movie_vectors_scaled_train.npy
+      hash: md5
+      md5: d138e20c0fd5e107b7f330b3821fc664
+      size: 118169344
+    - path: scripts/train_autoencoder.py
+      hash: md5
+      md5: 8693ddfb6b49aeaf9a51da9b0e77da8d
+      size: 8422
+    params:
+      params.yaml:
+        autoencoder.batch_size: 256
+        autoencoder.encoding_dim: 64
+        autoencoder.num_epochs: 100
+    outs:
+    - path: models/eval_metrics.json
+      hash: md5
+      md5: 42bf483fdd0723e5dac4c9453a4d295d
+      size: 79
+    - path: models/movie_content_vectors_test.npz
+      hash: md5
+      md5: a59bb8277903985d5e1480aae2241291
+      size: 16684
+    - path: models/movie_content_vectors_train.npz
+      hash: md5
+      md5: a02b77dece59d5c31a1ceef6895bd0e7
+      size: 1840522
+  cluster_movies_stage:
+    cmd: python scripts/cluster.py --tasks data:generate_movie_vector_oftest_clusters
+    deps:
+    - path: models/movie_content_vectors_train.npz
+      hash: md5
+      md5: a02b77dece59d5c31a1ceef6895bd0e7
+      size: 1840522
+    - path: scripts/cluster.py
+      hash: md5
+      md5: 1b2324993b2473e3ded9d75fcccb6dd9
+      size: 2438
+    params:
+      params.yaml:
+        clustering.n_clusters: 150
+    outs:
+    - path: models/movie_clusters.pkl
+      hash: md5
+      md5: 086a3ffbcab0218f9c8225e5aefede1d
+      size: 104663

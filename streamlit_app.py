@@ -1,8 +1,6 @@
-import sys
-import os
-from scripts.data_processing import ratings, movies
-from scripts.recommend import recommend_top_movies_by_genres, get_top_movies
-from scripts.utils import preprocess_popularity, get_all_genres
+from scripts.recommend import get_rec_on_train_content_vector, get_top_movies, get_rec_on_test_content_vector, \
+    get_combine_content_vector
+from scripts.utils import get_all_genres, get_project_paths, visualize_recommendations_df
 
 import streamlit as st
 import pandas as pd
@@ -13,7 +11,10 @@ st.set_page_config(page_title="🎬 Movie Recommender", layout="wide")
 
 st.title("🎥 Movie Recommendation System")
 
+with open("params.yaml", "r") as f:
+    paths = get_project_paths()
 
+movies = pd.read_csv(paths["raw_dir"] / "movies.csv")
 movies = movies
 
 # --- Выбор режима ---
@@ -47,11 +48,74 @@ if mode == "Холодный старт":
 
 elif mode == "Контентные рекомендации":
     st.subheader("📚 Контентные рекомендации")
-    st.info("Здесь будет поиск фильмов на основе похожести.")
+    st.info("Предсказание на основе контента с порогом релевантности. Данные разбиты по наборам тегов на обучающую "
+            "и тестовую группы. Результаты показывают что совпадения по рекомендациям есть, но слабые из-за слабых тегов")
+    stage_rec = False
+
+    # Одна горизонтальная линия: поле + кнопка
+    with st.container():
+        col1, col2 = st.columns([5, 1])  # Сделал пропорцию 5 к 1 для красоты
+
+        with col1:
+            movie_ids_input = st.text_input(
+                "Введите ID фильмов через запятую:",
+                placeholder="Например: 1, 23, 45",
+                label_visibility="collapsed"  # Убираем дублирующий лейбл над полем
+            )
+
+        with col2:
+            show_recs = st.button("Показать", use_container_width=True)  # Кнопка растягивается на всю ширину колонки
+
+    # Логика обработки после нажатия кнопки
+    if show_recs:
+        if movie_ids_input:
+            try:
+                # Преобразуем введённый текст в список чисел
+                movie_ids = [int(id_.strip()) for id_ in movie_ids_input.split(",") if id_.strip().isdigit()]
+
+                if movie_ids:
+                    stage_rec = True
+                    all_recommendations_train, recommendation_info = get_rec_on_train_content_vector(movie_ids)
+                    all_recommendations_test, _ = get_rec_on_test_content_vector(movie_ids)
+                    all_recommendations_full, _ = get_combine_content_vector(movie_ids)
+                else:
+                    st.error("Введите хотя бы один корректный ID фильма.")
+            except Exception as e:
+                st.error(f"Ошибка обработки ввода: {e}")
+        else:
+            st.error("Пожалуйста, введите хотя бы один ID фильма.")
+
+    # Вывод рекомендаций на всю ширину
+    if stage_rec:
+
+        for movie in recommendation_info:
+            movie_id = movie['movie_id']
+            title = movie['title']
+            genres = movie['genres']
+
+            # Формируем строку с нужным форматом
+            st.write(f"Получаем рекомендации для фильма с ID: {movie_id} (Название: {title}) (Жанры: {genres})")
+
+        st.markdown("---")  # Разделительная линия для красоты
+        st.subheader("🎬 Рекомендации на основе обучающего вектора:")
+        st.dataframe(all_recommendations_train, use_container_width=True)
+
+        st.subheader("🎬 Рекомендации на основе тестового вектора:")
+        st.dataframe(all_recommendations_test, use_container_width=True)
+
+        st.subheader("🎬 Рекомендации на основе общего вектора:")
+        st.dataframe(all_recommendations_full, use_container_width=True)
+
+        st.subheader("Оценка тестирования Train/Test:")
+        visualize_recommendations_df(all_recommendations_train, all_recommendations_test)
+
+        st.subheader("Оценка тестирования Train/общий вектор:")
+        visualize_recommendations_df(all_recommendations_train, all_recommendations_full)
 
 elif mode == "Гибридные рекомендации":
     st.subheader("🔀 Гибридные рекомендации")
     st.info("Здесь подключим контент + ALS item factors.")
+
 
 elif mode == "По пользовательскому вектору":
     st.subheader("👤 Рекомендации на основе предпочтений пользователя")

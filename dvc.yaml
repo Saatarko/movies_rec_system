@@ -1,25 +1,50 @@
 stages:
-  train_autoencoder:
-    cmd: python scripts/train_autoencoder.py
+  train_autoencoder_stage:
+    cmd: python scripts/train_autoencoder.py --tasks data:movie_autoencoder
     deps:
     - data/processed/movie_vectors_scaled_train.npy
     - data/processed/movie_vectors_scaled_test.npy
     - scripts/train_autoencoder.py
     outs:
     - models/movies_content_autoencoder.pt
-    - models/movie_content_vectors_train.npz
-    - models/movie_content_vectors_test.npz
     metrics:
-    - models/metrics.json
+    - models/train_metrics.json
     params:
     - autoencoder.encoding_dim
     - autoencoder.num_epochs
     - autoencoder.batch_size
+
+  eval_content_train_test_vectors_stage:
+    cmd: python scripts/train_autoencoder.py --tasks data:movie_eval_vector
+    deps:
+      - data/processed/movie_vectors_scaled_train.npy
+      - data/processed/movie_vectors_scaled_test.npy
+      - scripts/train_autoencoder.py
+    outs:
+      - models/movie_content_vectors_train.npz
+      - models/movie_content_vectors_test.npz
+    metrics:
+      - models/eval_metrics.json
+    params:
+      - autoencoder.encoding_dim
+      - autoencoder.num_epochs
+      - autoencoder.batch_size
+
   generate_vectors_stage:
-    cmd: python scripts/data_processing.py
+    cmd: python scripts/data_processing.py --tasks data:generate_content_vector
     deps:
     - data/raw
     - scripts/data_processing.py
     outs:
     - data/processed/movie_vectors_scaled_test.npy
     - data/processed/movie_vectors_scaled_train.npy
+
+  cluster_movies_stage:
+      cmd: python scripts/cluster.py --tasks data:generate_movie_vector_oftest_clusters
+      deps:
+      - models/movie_content_vectors_train.npz
+      - scripts/cluster.py
+      outs:
+      - models/movie_clusters.pkl
+      params:
+      - clustering.n_clusters

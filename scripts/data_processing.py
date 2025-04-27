@@ -1,3 +1,6 @@
+import argparse
+from pathlib import Path
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -51,54 +54,58 @@ from sklearn.metrics import r2_score, mean_absolute_error
 from scipy.sparse import hstack
 import umap
 
-
-# movies = pd.read_csv("data/raw/movies.csv")
-# ratings = pd.read_csv("data/raw/ratings.csv")
-# tags = pd.read_csv("data/raw/tags.csv")
-# genome_tags = pd.read_csv("data/raw/genome-tags.csv")
-# genome_scores = pd.read_csv("data/raw/genome-scores.csv")
-
+from utils import get_project_paths
+from task_registry import task, main
+import yaml
 
 # Путь к корню проекта (там где data/, scripts/ и так далее)
 PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
 
-# Теперь можно строить пути правильно
-movies = pd.read_csv(os.path.join(PROJECT_ROOT, "data", "raw", "movies.csv"))
-ratings = pd.read_csv(os.path.join(PROJECT_ROOT, "data", "raw", "ratings.csv"))
-tags = pd.read_csv(os.path.join(PROJECT_ROOT, "data", "raw", "tags.csv"))
-genome_tags = pd.read_csv(os.path.join(PROJECT_ROOT, "data", "raw", "genome-tags.csv"))
-genome_scores = pd.read_csv(os.path.join(PROJECT_ROOT, "data", "raw", "genome-scores.csv"))
-importance_df = pd.DataFrame(columns=['movieId', 'importance_score'])
 
-def generate_content_vector_for_offtest(genome_scores, genome_tags):
-    movie_tag_matrix = genome_scores.pivot(index='movieId', columns='tagId', values='relevance').fillna(0)
+@task("data:generate_content_vector")
+def generate_content_vector_for_offtest():
+    # Путь к корню проекта (там где data/, scripts/ и так далее)
+    paths = get_project_paths()
+    genome_tags = pd.read_csv(paths["raw_dir"] / "genome-tags.csv")
+    genome_scores = pd.read_csv(paths["raw_dir"] / "genome-scores.csv")
 
+    relevance_threshold = genome_scores['relevance'].quantile(0.75)
+    high_relevance_scores = genome_scores[genome_scores['relevance'] >= relevance_threshold]
+
+    # Формируем матрицу movie_tag_matrix только с высокорелевантными тегами
+    movie_tag_matrix_filtered = high_relevance_scores.pivot(index='movieId', columns='tagId',
+                                                            values='relevance').fillna(0)
+
+    # Сопоставление tagId с именами тегов
     tag_id_to_name = genome_tags.set_index('tagId')['tag']
-    movie_tag_matrix.columns = movie_tag_matrix.columns.map(tag_id_to_name)
+    movie_tag_matrix_filtered.columns = movie_tag_matrix_filtered.columns.map(tag_id_to_name)
 
-    tag_columns = movie_tag_matrix.columns
+    # Разделяем данные на обучающие и тестовые
+    tag_columns = movie_tag_matrix_filtered.columns
     tag_train, tag_test = train_test_split(tag_columns, test_size=0.2, random_state=42)
 
-    movie_tag_matrix_train = movie_tag_matrix[tag_train]
-    movie_tag_matrix_test = movie_tag_matrix[tag_test]
-
+    movie_tag_matrix_train = movie_tag_matrix_filtered[tag_train]
+    movie_tag_matrix_test = movie_tag_matrix_filtered[tag_test]
     movie_tag_matrix_test_aligned = movie_tag_matrix_test.reindex(columns=movie_tag_matrix_train.columns, fill_value=0)
 
+    # Нормализация
     scaler = MinMaxScaler()
     movie_vectors_scaled_train = scaler.fit_transform(movie_tag_matrix_train)
     movie_vectors_scaled_test = scaler.transform(movie_tag_matrix_test_aligned)
 
-    output_dir = os.path.join(PROJECT_ROOT, 'data', 'processed')
-    os.makedirs(output_dir, exist_ok=True)
-
-    print(f"Saving movie_vectors_scaled_train.npy to {output_dir}")
-    np.save(os.path.join(output_dir, 'movie_vectors_scaled_train.npy'), movie_vectors_scaled_train)
-
-    print(f"Saving movie_vectors_scaled_test.npy to {output_dir}")
-    np.save(os.path.join(output_dir, 'movie_vectors_scaled_test.npy'), movie_vectors_scaled_test)
+    # os.makedirs((paths["processed_dir"]), exist_ok=True)
+    np.save((paths["processed_dir"] / "movie_vectors_scaled_train.npy"), movie_vectors_scaled_train)
+    np.save((paths["processed_dir"] / "movie_vectors_scaled_test.npy"), movie_vectors_scaled_test)
 
     print("Files saved successfully!")
+
     return movie_vectors_scaled_train, movie_vectors_scaled_test
 
 if __name__ == "__main__":
-    generate_content_vector_for_offtest(genome_scores, genome_tags)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--tasks", nargs="+", help="Список задач для выполнения")
+    args = parser.parse_args()
+
+    if args.tasks:
+        main(args.tasks)  # Здесь передаем задачи, которые указаны в командной строке
+

@@ -178,3 +178,4 @@ data/
 /mlruns
 /dvc
 /.dvc
+*.db

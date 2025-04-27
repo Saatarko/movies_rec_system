@@ -2,3 +2,6 @@
 /movie_content_vectors_train.npz
 /movie_content_vectors_test.npz
 /metrics.json
+/train_metrics.json
+/eval_metrics.json
+/movie_clusters.pkl

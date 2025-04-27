@@ -4,3 +4,10 @@ autoencoder:
   num_epochs: 100
   learning_rate: 0.001
   model_output_path: models/movies_content_autoencoder.pt
+paths:
+  raw_data_dir: data/raw
+  processed_data_dir: data/processed
+  models_dir: models
+  scripts: scripts
+clustering:
+  n_clusters: 150

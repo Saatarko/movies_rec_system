@@ -11,16 +11,16 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # === DAG конфигурация ===
 with DAG(
-    dag_id="train_movie_autoencoder_dvc_mlflow",
+    dag_id="generate_vectors_dvc_mlflow",
     start_date=datetime(2024, 1, 1),
     schedule=None,  # или cron выражение
     catchup=False,
     tags=["recommender", "dvc", "mlflow"]
 ) as dag:
 
-    train_autoencoder = BashOperator(
-        task_id="train_autoencoder_dvc",
-        bash_command="cd /home/saatarko/PycharmProjects/movies_rec_system && dvc repro train_autoencoder_stage"
+    dvc_generate_vectors = BashOperator(
+        task_id="generate_vectors_dvc",
+        bash_command="cd /home/saatarko/PycharmProjects/movies_rec_system && dvc repro generate_vectors_stage"
     )
 
-    train_autoencoder
+    dvc_generate_vectors
