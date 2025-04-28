@@ -14,6 +14,20 @@ stages:
     - autoencoder.num_epochs
     - autoencoder.batch_size
 
+  train_autoencoder_for_raw_stage:
+    cmd: python scripts/train_autoencoder.py --tasks data:movie_autoencoder_raw
+    deps:
+      - data/processed/movie_vectors_scaled_full.npy
+      - scripts/train_autoencoder.py
+    outs:
+      - models/movies_content_autoencoder_raw.pt
+    metrics:
+      - models/metrics_raw.json
+    params:
+      - autoencoder.encoding_dim
+      - autoencoder.num_epochs
+      - autoencoder.batch_size
+
   eval_content_train_test_vectors_stage:
     cmd: python scripts/train_autoencoder.py --tasks data:movie_eval_vector
     deps:
@@ -30,6 +44,20 @@ stages:
       - autoencoder.num_epochs
       - autoencoder.batch_size
 
+  eval_content_train_test_vectors_stage_raw:
+    cmd: python scripts/train_autoencoder.py --tasks data:movie_eval_vector_raw
+    deps:
+      - data/processed/movie_vectors_scaled_full.npy
+      - scripts/train_autoencoder.py
+    outs:
+      - models/model_movies_full_vectors_raw.npz
+    metrics:
+      - models/eval_metrics_raw.json
+    params:
+      - autoencoder.encoding_dim
+      - autoencoder.num_epochs
+      - autoencoder.batch_size
+
   generate_vectors_stage:
     cmd: python scripts/data_processing.py --tasks data:generate_content_vector
     deps:
@@ -39,6 +67,15 @@ stages:
     - data/processed/movie_vectors_scaled_test.npy
     - data/processed/movie_vectors_scaled_train.npy
 
+  generate_vectors_raw_stage:
+    cmd: python scripts/data_processing.py --tasks data:generate_content_vector_raw
+    deps:
+      - data/raw
+      - scripts/data_processing.py
+    outs:
+      - data/processed/movie_vectors_scaled_full.npy
+
+
   cluster_movies_stage:
       cmd: python scripts/cluster.py --tasks data:generate_movie_vector_oftest_clusters
       deps:
@@ -47,4 +84,17 @@ stages:
       outs:
       - models/movie_clusters.pkl
       params:
+      - clustering.n_clusters
+
+  cluster_movies_stage_raw:
+    cmd: python scripts/cluster.py --tasks data:generate_movie_vector_oftest_clusters_raw
+    deps:
+      - models/model_movies_full_vectors_raw.npz
+      - scripts/cluster.py
+    outs:
+      - models/movies_vectors_train_raw.npz
+      - models/movies_vectors_test_raw.npz
+      - models/movie_clusters_raw.pkl
+      - models/cluster_metrics_raw.json
+    params:
       - clustering.n_clusters

@@ -10,8 +10,8 @@ stages:
       nfiles: 6
     - path: scripts/data_processing.py
       hash: md5
-      md5: a00fc394dbcdee79eeb262e46b18a76b
-      size: 4448
+      md5: 4084a6e4f058a88bf37288a925eecfdc
+      size: 5258
     outs:
     - path: data/processed/movie_vectors_scaled_test.npy
       hash: md5
@@ -71,8 +71,8 @@ stages:
       size: 118169344
     - path: scripts/train_autoencoder.py
       hash: md5
-      md5: 8693ddfb6b49aeaf9a51da9b0e77da8d
-      size: 8422
+      md5: 5ffc3924d90f88489be5bede900075f4
+      size: 14127
     params:
       params.yaml:
         autoencoder.batch_size: 256
@@ -100,8 +100,8 @@ stages:
       size: 118169344
     - path: scripts/train_autoencoder.py
       hash: md5
-      md5: 8693ddfb6b49aeaf9a51da9b0e77da8d
-      size: 8422
+      md5: 5ffc3924d90f88489be5bede900075f4
+      size: 14127
     params:
       params.yaml:
         autoencoder.batch_size: 256
@@ -129,8 +129,8 @@ stages:
       size: 1840522
     - path: scripts/cluster.py
       hash: md5
-      md5: 1b2324993b2473e3ded9d75fcccb6dd9
-      size: 2438
+      md5: c2677fb4e894ceff084e3f90de08a5f1
+      size: 4672
     params:
       params.yaml:
         clustering.n_clusters: 150
@@ -139,3 +139,101 @@ stages:
       hash: md5
       md5: 086a3ffbcab0218f9c8225e5aefede1d
       size: 104663
+  generate_vectors_raw_stage:
+    cmd: python scripts/data_processing.py --tasks data:generate_content_vector_raw
+    deps:
+    - path: data/raw
+      hash: md5
+      md5: a59999018f20fa943c91990de8fc609c.dir
+      size: 1546911633
+      nfiles: 6
+    - path: scripts/data_processing.py
+      hash: md5
+      md5: 4084a6e4f058a88bf37288a925eecfdc
+      size: 5258
+    outs:
+    - path: data/processed/movie_vectors_scaled_full.npy
+      hash: md5
+      md5: af150360857c4e75382e7f3b11a38d74
+      size: 147777152
+  train_autoencoder_for_raw_stage:
+    cmd: python scripts/train_autoencoder.py --tasks data:movie_autoencoder_raw
+    deps:
+    - path: data/processed/movie_vectors_scaled_full.npy
+      hash: md5
+      md5: af150360857c4e75382e7f3b11a38d74
+      size: 147777152
+    - path: scripts/train_autoencoder.py
+      hash: md5
+      md5: 5ffc3924d90f88489be5bede900075f4
+      size: 14127
+    params:
+      params.yaml:
+        autoencoder.batch_size: 256
+        autoencoder.encoding_dim: 64
+        autoencoder.num_epochs: 100
+    outs:
+    - path: models/metrics_raw.json
+      hash: md5
+      md5: aff25826f89fb98580d51ce5475fa86f
+      size: 177
+    - path: models/movies_content_autoencoder_raw.pt
+      hash: md5
+      md5: d3e23b907a9be570a7f5bc7db290dcf4
+      size: 5816349
+  eval_content_train_test_vectors_stage_raw:
+    cmd: python scripts/train_autoencoder.py --tasks data:movie_eval_vector_raw
+    deps:
+    - path: data/processed/movie_vectors_scaled_full.npy
+      hash: md5
+      md5: af150360857c4e75382e7f3b11a38d74
+      size: 147777152
+    - path: scripts/train_autoencoder.py
+      hash: md5
+      md5: 5ffc3924d90f88489be5bede900075f4
+      size: 14127
+    params:
+      params.yaml:
+        autoencoder.batch_size: 256
+        autoencoder.encoding_dim: 64
+        autoencoder.num_epochs: 100
+    outs:
+    - path: models/eval_metrics_raw.json
+      hash: md5
+      md5: 0ba8f68c2b19b2fc029e02ac6a95e151
+      size: 35
+    - path: models/model_movies_full_vectors_raw.npz
+      hash: md5
+      md5: 162498fc4efa5e643e671056140e6205
+      size: 2081454
+  cluster_movies_stage_raw:
+    cmd: python scripts/cluster.py --tasks data:generate_movie_vector_oftest_clusters_raw
+    deps:
+    - path: models/model_movies_full_vectors_raw.npz
+      hash: md5
+      md5: 162498fc4efa5e643e671056140e6205
+      size: 2081454
+    - path: scripts/cluster.py
+      hash: md5
+      md5: c2677fb4e894ceff084e3f90de08a5f1
+      size: 4672
+    params:
+      params.yaml:
+        clustering.n_clusters: 150
+    outs:
+    - path: models/cluster_metrics_raw.json
+      hash: md5
+      md5: 8ca7822352e92dbda8ed7f08424206bb
+      size: 123
+    - path: models/movie_clusters_raw.pkl
+      hash: md5
+      md5: 05f1fd50274b952eab5a04c190f7600b
+      size: 91559
+    - path: models/movies_vectors_test_raw.npz
+      hash: md5
+      md5: beb9bdfeea741e15804f58cb88809220
+      size: 417291
+    - path: models/movies_vectors_train_raw.npz
+      hash: md5
+      md5: 341e07294bfedd2ee03336c5a04765fa
+      size: 1667056

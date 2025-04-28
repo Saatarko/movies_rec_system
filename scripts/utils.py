@@ -1,3 +1,7 @@
+import json
+import os
+import random
+import sys
 from pathlib import Path
 
 import joblib
@@ -9,6 +13,10 @@ import seaborn as sns
 from matplotlib import pyplot as plt
 from matplotlib_venn import venn2
 import streamlit as st
+from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import MinMaxScaler
+
 
 def preprocess_popularity(ratings_df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -190,3 +198,108 @@ def predict_test_movie_clusters(movie_content_vectors_test):
     test_movie_clusters = kmeans_movies.predict(movie_content_vectors_test)
 
     return test_movie_clusters
+
+
+
+def predict_test_movie_clusters_raw(kmeans_model, movie_content_vectors_test):
+    # Прогнозируем кластеры для тестовых данных
+    test_movie_clusters = kmeans_model.predict(movie_content_vectors_test)
+    return test_movie_clusters
+
+
+def find_closest_movie_in_test(train_movie_idx, train_vectors, test_vectors, kmeans_model, test_movie_clusters):
+    """
+    Находит наиболее похожий фильм из test набора для фильма из train набора в рамках одного кластера.
+
+    :param train_movie_idx: индекс фильма из train
+    :param train_vectors: векторы фильмов из train
+    :param test_vectors: векторы фильмов из test
+    :param kmeans_model: обученная модель кластеризации (kmeans)
+    :param test_movie_clusters: массив кластеров для всех test фильмов
+    :return: индекс наиболее похожего фильма в test и значение сходства
+    """
+    train_movie_vector = train_vectors[train_movie_idx].reshape(1, -1)
+
+    # Предсказываем кластер для train фильма
+    train_movie_cluster = kmeans_model.predict(train_movie_vector)[0]
+
+    # Выбираем только test фильмы из того же кластера
+    same_cluster_indices = np.where(test_movie_clusters == train_movie_cluster)[0]
+
+    if len(same_cluster_indices) == 0:
+        raise ValueError(f"Нет фильмов в кластере {train_movie_cluster} среди test-фильмов!")
+
+    test_vectors_same_cluster = test_vectors[same_cluster_indices]
+
+    # Считаем сходство только с ними
+    similarities = cosine_similarity(train_movie_vector, test_vectors_same_cluster).flatten()
+    top_match_idx_in_cluster = np.argmax(similarities)
+
+    # Преобразуем индекс внутри кластера обратно в глобальный индекс test
+    top_match_idx = same_cluster_indices[top_match_idx_in_cluster]
+
+    return top_match_idx, similarities[top_match_idx_in_cluster]
+
+
+def get_random_train_sample_and_find_closest(
+    movie_content_vectors_train,
+    movie_content_vectors_test,
+    n_samples=3
+):
+    from sklearn.metrics.pairwise import cosine_similarity
+
+    n_train = len(movie_content_vectors_train)
+    n_test = len(movie_content_vectors_test)
+
+    print(f"Размеры массивов: train = {n_train}, test = {n_test}")
+
+    # Берем случайные индексы из train
+    random_train_indices = np.random.choice(n_train, n_samples, replace=False)
+    print(f"Случайные индексы фильмов из train: {random_train_indices}")
+
+    test_sample_indices = []
+
+    for idx in random_train_indices:
+        train_vector = movie_content_vectors_train[idx].reshape(1, -1)
+
+        # Считаем сходства с каждым фильмом в тестовом наборе
+        similarities = cosine_similarity(train_vector, movie_content_vectors_test)[0]
+
+        # Находим индекс наиболее похожего фильма в тесте
+        most_similar_idx = similarities.argmax()
+
+        # Проверяем, что индекс не выходит за пределы
+        if most_similar_idx < 0 or most_similar_idx >= n_test:
+            print(f"Ошибка обработки фильма {idx}: индекс {most_similar_idx} выходит за пределы теста (size {n_test})")
+            continue
+
+        print(f"Фильм из train (индекс {idx}) — наиболее похожий фильм в test (индекс {most_similar_idx}), сходство: {similarities[most_similar_idx]:.4f}")
+
+        test_sample_indices.append(most_similar_idx)
+
+    return random_train_indices.tolist(), test_sample_indices
+
+
+
+def create_train_movie_ids():
+    project_root = Path(__file__).resolve().parent.parent  # или адаптируй путь под себя
+    params_path = project_root / "params.yaml"
+    with open(params_path, "r") as f:
+        paths = get_project_paths()
+
+    # Загружаем исходные фильмы
+    movies_df = pd.read_csv(paths["raw_dir"] / "movies.csv")
+
+    # Загружаем movie_content_vectors_train
+    movie_content_vectors_train = np.load(paths["models_dir"] / "movie_content_vectors_train.npz")['vectors']
+
+    # Оставляем только те фильмы, которые были в трейне
+    train_movie_ids = movies_df['movieId'].values[:len(movie_content_vectors_train)]
+
+    # Сохраняем
+    np.save(paths["models_dir"] / "train_movie_ids.npy", train_movie_ids)
+
+    print(f"train_movie_ids.npy сохранён в {paths['models_dir']}")
+
+
+create_train_movie_ids()

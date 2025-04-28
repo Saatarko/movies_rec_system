@@ -101,6 +101,25 @@ def generate_content_vector_for_offtest():
 
     return movie_vectors_scaled_train, movie_vectors_scaled_test
 
+@task("data:generate_content_vector_raw")
+def generate_content_vector_raw():
+    paths = get_project_paths()
+    genome_tags = pd.read_csv(paths["raw_dir"] / "genome-tags.csv")
+    genome_scores = pd.read_csv(paths["raw_dir"] / "genome-scores.csv")
+
+    movie_tag_matrix = genome_scores.pivot(index='movieId', columns='tagId', values='relevance').fillna(0)
+
+    # Добавим к movie_tag_matrix названия тегов
+    tag_id_to_name = genome_tags.set_index('tagId')['tag']
+    movie_tag_matrix.columns = movie_tag_matrix.columns.map(tag_id_to_name)
+
+    scaler_full_vector = MinMaxScaler()
+    movie_vectors_scaled = scaler_full_vector.fit_transform(movie_tag_matrix)
+
+    np.save((paths["processed_dir"] / "movie_vectors_scaled_full.npy"), movie_vectors_scaled)
+
+    return movie_vectors_scaled
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--tasks", nargs="+", help="Список задач для выполнения")
