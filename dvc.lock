@@ -475,3 +475,22 @@ stages:
       hash: md5
       md5: b6c8737f2471f4d67b33021b64c7fac8
       size: 78710050
+  user_vector_full_clusters_stage:
+    cmd: python scripts/cluster.py --tasks data:user_vector_full_clusters
+    deps:
+    - path: scripts/cluster.py
+      hash: md5
+      md5: 124cf1e99bc8e345cf76d6af8dabd98d
+      size: 11634
+    params:
+      params.yaml:
+        clustering.n_clusters: 150
+    outs:
+    - path: models/cluster_metrics_user_full.json
+      hash: md5
+      md5: ed2367c7cde4b2cfe031f775cbc9009a
+      size: 124
+    - path: models/kmeans_full_users.pkl
+      hash: md5
+      md5: c5cd0f3c5ba05c632c48f1faef140650
+      size: 1363075

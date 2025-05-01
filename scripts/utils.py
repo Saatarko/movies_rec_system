@@ -344,10 +344,22 @@ def save_model_metrics(metrics_path: Path, train_losses, val_rmses, best_rmse):
         json.dump(metrics, f, indent=4)
 
 
-def download_if_missing(file_path: str, file_id: str):
+def download_if_missing(file_path, file_id):
+    file_path = str(file_path)
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+
     if not os.path.exists(file_path):
         url = f"https://drive.google.com/uc?id={file_id}"
         print(f"⏬ Downloading {file_path} from Google Drive...")
         gdown.download(url, file_path, quiet=False)
     else:
         print(f"✅ {file_path} already exists.")
+
+def build_user_ratings_dict(movie_ids, ratings):
+    """
+    Преобразует два списка в словарь {movie_id: rating}
+    """
+    if len(movie_ids) != len(ratings):
+        raise ValueError("Длина списков movie_ids и ratings должна совпадать")
+
+    return {int(mid): float(r) for mid, r in zip(movie_ids, ratings)}

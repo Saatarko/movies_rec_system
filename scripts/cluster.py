@@ -206,7 +206,45 @@ def user_vector_oftest_clusters():
     return kmeans_users
 
 
+@task("data:user_vector_full_clusters")
+def user_vector_full_clusters():
 
+    with open("params.yaml", "r") as f:
+        paths = get_project_paths()
+        cluster = yaml.safe_load(f)["clustering"]
+
+    # Кластеризация
+    user_content_vector = np.load(paths["models_dir"] / "user_content_vector.npz")['vectors']
+
+    # Кластеризация
+    n_clusters = cluster['n_clusters']
+    kmeans_users = KMeans(n_clusters=n_clusters, random_state=42, n_init='auto')
+    kmeans_users.fit(user_content_vector)
+
+    # Сохраняем модель
+    joblib.dump(kmeans_users, paths["models_dir"] / 'kmeans_full_users.pkl')
+
+    # Логирование в MLflow
+    with mlflow.start_run(run_name="kmeans_full_users"):
+        mlflow.log_param("n_clusters", n_clusters)
+
+        # Метрики
+        metrics = {
+            "silhouette_score": float(silhouette_score(user_content_vector, kmeans_users.labels_)),
+            "davies_bouldin_score": float(davies_bouldin_score(user_content_vector, kmeans_users.labels_)),
+            "inertia": float(kmeans_users.inertia_),  # внутренняя метрика KMeans
+        }
+
+        mlflow.log_metrics(metrics)
+        mlflow.sklearn.log_model(kmeans_users, artifact_path="kmeans_full_users")
+
+        # Можно дополнительно сохранить другие параметры
+        with open(paths["models_dir"] / "cluster_metrics_user_full.json", "w") as f:
+            json.dump({"metrics": metrics}, f, default=convert_numpy_types)
+
+        mlflow.log_artifact(paths["models_dir"] / "cluster_metrics_user_full.json")
+
+    return kmeans_users
 
 
 

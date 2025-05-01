@@ -1,7 +1,7 @@
 from scripts.recommend import get_rec_on_train_content_vector, get_top_movies, get_rec_on_test_content_vector, \
     get_combine_content_vector, get_rec_on_train_content_vector_raw, get_als_and_content_vector, add_new_films, \
-    get_recommendation_on_user_vector
-from scripts.utils import get_all_genres, get_project_paths, visualize_recommendations_df
+    get_recommendation_on_user_vector, predict_recommendations, add_new_user_to_system, get_recommendation_new_user
+from scripts.utils import get_all_genres, get_project_paths, visualize_recommendations_df, build_user_ratings_dict
 
 import streamlit as st
 import pandas as pd
@@ -23,10 +23,11 @@ mode = st.sidebar.selectbox("Выбери режим:", [
     "Холодный старт",
     "Контентные рекомендации (тест на тегах)",
     "Контентные рекомендации (тест на фильмах)",
-    "Добавление нового фильма",
     "Гибридные рекомендации",
-    "По пользовательскому вектору",
+    "Рекомендации по пользовательскому вектору",
     "Гибридные рекомендации на нейросети",
+    "Добавление нового фильма",
+    "Добавление нового пользователя",
 ])
 
 st.sidebar.markdown("---")
@@ -344,7 +345,7 @@ elif mode == "Гибридные рекомендации на нейросет�
 
                 if user_id:
                     stage_rec = True
-                    final_nn = recommend_for_user_df(user_id, top_k=50)
+                    final_nn = predict_recommendations(user_id, top_k=50)
                     final_user, final_df_test = get_recommendation_on_user_vector(user_id)
                 else:
                     st.error("Введите хотя бы один корректный ID пользователя.")
@@ -359,10 +360,43 @@ elif mode == "Гибридные рекомендации на нейросет�
         st.subheader(f"🎬 Рекомендации для пользователя {user_id} на основе предсказаний нейросети:")
         st.dataframe(final_nn, use_container_width=True)
 
-        st.subheader(f"📊 Сравнение рекомендаций для пользователя {user_id} на основе предсказаний нейросети  с простым сходством на пользовательком векторе:")
+        st.markdown("---")  # Разделительная линия для красоты
+        st.subheader(f"🎬 Рекомендации для пользователя {user_id} на основе  на пользовательском векторе с простым сходством :")
+        st.dataframe(final_user, use_container_width=True)
+
+        st.subheader(f"📊 Сравнение рекомендаций для пользователя {user_id} на основе предсказаний нейросети  с простым сходством на пользовательском векторе:")
         visualize_recommendations_df(final_nn, final_user)
 
         st.markdown("---")  # Разделительная линия
+
+elif mode == "Добавление нового пользователя":
+    st.subheader("👤 Добавление нового пользователя")
+    st.info(
+        "Добавьте нового пользователя. Т.к добавление пустого пользователя не информативно, то создаем пользователя с 'историей'")
+    # Поля для ввода фильмов и оценок
+    movie_ids_input = st.text_input("Введите список movieId через запятую (например: 1,50,300)")
+    ratings_input = st.text_input("Введите соответствующие оценки через запятую (например: 4.0,3.5,5.0)")
+    stage_rec = False
+
+    if st.button("Добавить пользователя"):
+        # Добавление фильма и получение рекомендаций
+        try:
+            movie_ids = [int(x.strip()) for x in movie_ids_input.split(",") if x.strip()]
+            ratings = [float(x.strip()) for x in ratings_input.split(",") if x.strip()]
+
+            final_df, new_user_idx = get_recommendation_new_user(movie_ids, ratings)
+            st.success(f"✅ Пользователь добавлен. Новый индекс: {new_user_idx}")
+            stage_rec = True
+
+            if stage_rec:
+                st.markdown("---")  # Разделительная линия для красоты
+                st.subheader(f"🎬 Рекомендации для пользователя {new_user_idx} на основе предсказаний нейросети:")
+                st.dataframe(final_df, use_container_width=True)
+
+                st.markdown("---")  # Разделительная линия для красоты
+
+        except Exception as e:
+            st.error(f"❌ Ошибка: {e}")
 
 st.markdown("---")
 

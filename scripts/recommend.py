@@ -14,9 +14,20 @@ from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.neighbors import NearestNeighbors
 from sklearn.preprocessing import MinMaxScaler
 
-from scripts.train_autoencoder import MovieAutoencoder, RatingPredictor
+from scripts.train_autoencoder import MovieAutoencoder, RatingPredictor, Autoencoder
 from scripts.utils import preprocess_popularity, get_project_paths, predict_test_movie_clusters, \
-    predict_test_movie_clusters_raw, predict_item_factors_batch, load_vectors_npz
+    predict_test_movie_clusters_raw, predict_item_factors_batch, load_vectors_npz, download_if_missing, \
+    build_user_ratings_dict
+
+project_root = Path(__file__).resolve().parent.parent  # Выходим из scripts/
+params_path = project_root / "params.yaml"
+with open(params_path, "r") as f:
+    paths = get_project_paths()
+
+    download_if_missing(paths["raw_dir"] / "ratings.csv", "1TEPWCjeWpKTjgtt1EzZDCce_oE04Bany")
+    download_if_missing(paths["raw_dir"] / "movies.csv", "1EpFCaRuzs9jpT7PRRSBdj-PJk4vu7Nfp")
+    download_if_missing(paths["raw_dir"] / "genome-scores.csv", "1bAGauM6EFu_r9HJhAmrjkeCzPSh8Alxd")
+
 
 
 def get_top_movies(selected_genres):
@@ -28,6 +39,7 @@ def get_top_movies(selected_genres):
 
     ratings = pd.read_csv(paths["raw_dir"] / "ratings.csv")
     movies = pd.read_csv(paths["raw_dir"] / "movies.csv")
+
     popularity_df = preprocess_popularity(ratings)
 
     if selected_genres:
@@ -1027,13 +1039,6 @@ def get_recommendation_on_user_vector(userid):
         is_test=False
     )
 
-    # user_sim  = find_top_similar_users(
-    #     user_id=userid,
-    #     user_vectors_train=user_vectors_train,
-    #     user_vectors_test=user_vectors_test,
-    #     user_encoder=user_encoder,
-    #     top_k=10
-    # )
 
     similar_users, distances = get_similar_user_in_test_set(
         user_id=userid,
@@ -1076,13 +1081,13 @@ def get_recommendation_on_user_vector(userid):
     return final_df, final_df_test
 
 
-def predict_recommendations(user_id, top_k=10):
+def predict_recommendations(user_id, top_k=50):
     paths = get_project_paths()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Загрузка всего
-    user_vectors = load_vectors_npz(paths["models_dir"] / "user_content_vector.npz")
-    item_vectors = load_vectors_npz(paths["models_dir"] / "model_movies_full_vectors_raw.npz")
+    user_vectors = load_vectors_npz(paths["models_dir"] / "embedding_user_vectors.npz")
+    item_vectors = load_vectors_npz(paths["models_dir"] / "embedding_item_vectors.npz")
 
     user_encoder = joblib.load(paths["processed_dir"] / "user_encoder.pkl")
     item_encoder = joblib.load(paths["processed_dir"] / "item_encoder.pkl")
@@ -1124,3 +1129,96 @@ def predict_recommendations(user_id, top_k=10):
 
     return temp
 
+
+
+# функция добавления пользователя
+def add_new_user_to_system(user_ratings_dict):
+    """
+    Добавляет нового пользователя по его рейтингам (movie_id -> rating).
+    Прогоняет через автоэнкодер, добавляет в user_content_vector.
+    Возвращает обновлённый user_content_vector и индекс нового пользователя.
+    """
+
+    project_root = Path(__file__).resolve().parent.parent  # Выходим из scripts/
+    params_path = project_root / "params.yaml"
+    with open(params_path, "r") as f:
+        config = yaml.safe_load(f)["autoencoder"]
+        paths = get_project_paths()
+
+    item_encoder = joblib.load(paths["processed_dir"] / "item_encoder.pkl")
+
+
+    user_content_vector = np.load(paths["models_dir"] / "user_content_vector.npz")['vectors']
+    encoding_dim = config["encoding_dim"]
+    ratings_csr = load_npz(paths["processed_dir"] / "ratings_csr.npz")
+
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    input_dim = ratings_csr.shape[1]
+
+    model = Autoencoder(input_dim=input_dim, encoding_dim=encoding_dim).to(device)
+    model_path = paths["models_dir"] / 'user_autoencoder_model.pt'
+    model.load_state_dict(torch.load(model_path, map_location=device))
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    kmeans_full_users = joblib.load(paths["models_dir"] / 'kmeans_full_users.pkl')
+
+    # Создание разреженного вектора
+    num_items = len(item_encoder.classes_)
+    new_user_vector = np.zeros(num_items)
+
+    for movie_id, rating in user_ratings_dict.items():
+        if movie_id in item_encoder.classes_:
+            item_idx = item_encoder.transform([movie_id])[0]
+            new_user_vector[item_idx] = rating
+
+    # Преобразуем в torch-тензор и прогоняем через encoder
+    model.eval()
+    with torch.no_grad():
+        input_tensor = torch.tensor(new_user_vector, dtype=torch.float32).to(device)
+        encoded_vector = model.encoder(input_tensor).cpu().numpy()
+
+    new_movie_cluster = kmeans_full_users.predict(user_content_vector.reshape(1, -1))[0]
+
+    # Добавим к user_content_vector
+    updated_user_content_vector = np.vstack([user_content_vector, encoded_vector])
+    new_user_idx = updated_user_content_vector.shape[0] - 1
+
+    return updated_user_content_vector, new_user_idx
+
+
+def get_recommendation_new_user(movie_ids, ratings):
+    project_root = Path(__file__).resolve().parent.parent  # Выходим из scripts/
+    params_path = project_root / "params.yaml"
+    with open(params_path, "r") as f:
+        paths = get_project_paths()
+
+    user_encoder = joblib.load(paths["processed_dir"] / "user_encoder.pkl")
+    ratings_csr = load_npz(paths["processed_dir"] / "ratings_csr.npz")
+    kmeans_users = joblib.load(paths["models_dir"] / 'kmeans_users.pkl')
+    importance_df = pd.DataFrame(columns=['movieId', 'importance_score'])
+    movies = pd.read_csv(paths["raw_dir"] / "movies.csv")
+    item_encoder = joblib.load(paths["processed_dir"] / "item_encoder.pkl")
+
+    user_ratings_dict = build_user_ratings_dict(movie_ids, ratings)
+
+    # Здесь вызываем твою функцию
+    new_user_vector, new_user_idx = add_new_user_to_system(user_ratings_dict)
+
+    final_df, similar_users_recommendations_df = get_user_recommendations_with_ensemble(
+        user_id=new_user_idx,
+        user_content_vector=new_user_vector,
+        user_encoder=user_encoder,
+        ratings_csr=ratings_csr,
+        kmeans_users= kmeans_users,
+        importance_df=importance_df,
+        movies_df=movies,
+        item_encoder=item_encoder,
+        top_n=50,
+        num_user=5,
+        is_test=False
+    )
+
+
+
+    return final_df, new_user_idx

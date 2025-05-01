@@ -216,3 +216,12 @@ stages:
       - autoencoder.batch_size
 
 
+  user_vector_full_clusters_stage:
+    cmd: python scripts/cluster.py --tasks data:user_vector_full_clusters
+    deps:
+      - scripts/cluster.py
+    outs:
+      - models/kmeans_full_users.pkl
+      - models/cluster_metrics_user_full.json
+    params:
+      - clustering.n_clusters
