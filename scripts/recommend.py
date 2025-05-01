@@ -1120,5 +1120,7 @@ def predict_recommendations(user_id, top_k=10):
                 "genres": row.iloc[0]["genres"],
                 "score": score
             })
+    temp = pd.DataFrame(result)
 
-    return pd.DataFrame(result)
+    return temp
+
