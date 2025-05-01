@@ -1,21 +1,17 @@
 import json
 import os
-import random
-import sys
 from pathlib import Path
 
 import joblib
+import mlflow
 import numpy as np
 import yaml
 import pandas as pd
-import argparse
 import seaborn as sns
 from matplotlib import pyplot as plt
 from matplotlib_venn import venn2
 import streamlit as st
 from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import MinMaxScaler
 
 
 def preprocess_popularity(ratings_df: pd.DataFrame) -> pd.DataFrame:
@@ -302,4 +298,55 @@ def create_train_movie_ids():
     print(f"train_movie_ids.npy сохранён в {paths['models_dir']}")
 
 
-create_train_movie_ids()
+def predict_item_factors_batch(content_vectors, models_bridge):
+    """
+    Предсказывает item_factors для нескольких фильмов на основе их content_vectors.
+
+    :param content_vectors: np.array формы (N, 64) — контентные векторы фильмов
+    :param models_bridge: список из LGBM-моделей (или None для невалидных колонок)
+    :return: np.array формы (N, 64) — предсказанные item_factors
+    """
+    content_vectors = np.asarray(content_vectors)  # (N, 64)
+    n_samples = content_vectors.shape[0]
+    n_factors = len(models_bridge)
+
+    predictions = np.zeros((n_samples, n_factors))
+
+    for i, model in enumerate(models_bridge):
+        if model is not None:
+            predictions[:, i] = model.predict(content_vectors)
+        else:
+            # Заполняем нулями колонку, если модель не обучалась
+            predictions[:, i] = 0.0
+
+    return predictions
+
+
+def load_vectors_npz(path: Path, key: str = "vectors") -> np.ndarray:
+    return np.load(path)[key]
+
+
+def log_training_metrics(train_losses, val_rmses):
+    for epoch, (train_loss, val_rmse) in enumerate(zip(train_losses, val_rmses)):
+        mlflow.log_metric("train_loss", train_loss, step=epoch)
+        mlflow.log_metric("val_rmse", val_rmse, step=epoch)
+
+
+def save_model_metrics(metrics_path: Path, train_losses, val_rmses, best_rmse):
+    metrics = {
+        "final_train_loss": train_losses[-1],
+        "final_val_rmse": val_rmses[-1],
+        "best_val_rmse": best_rmse,
+        "num_epochs": len(train_losses)
+    }
+    with open(metrics_path, "w") as f:
+        json.dump(metrics, f, indent=4)
+
+
+def download_if_missing(file_path: str, file_id: str):
+    if not os.path.exists(file_path):
+        url = f"https://drive.google.com/uc?id={file_id}"
+        print(f"⏬ Downloading {file_path} from Google Drive...")
+        gdown.download(url, file_path, quiet=False)
+    else:
+        print(f"✅ {file_path} already exists.")

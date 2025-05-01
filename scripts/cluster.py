@@ -109,6 +109,112 @@ def make_movie_vector_oftest_clusters_raw():
 
     return kmeans_movies, raw_vectors_train, raw_vectors_test, movie_indices
 
+
+@task("data:make_movie_vector_als_cluster")
+def make_movie_vector_als_cluster():
+
+    with open("params.yaml", "r") as f:
+        paths = get_project_paths()
+        cluster = yaml.safe_load(f)["clustering"]
+
+    # Кластеризация
+    hybrid_movie_vector_full = np.load(paths["models_dir"] / "hybrid_movie_vector_full.npz")['vectors']
+    hybrid_movie_vector_full = hybrid_movie_vector_full.astype(np.float64)
+    # Кластеризация
+    n_clusters = cluster['n_clusters']
+    kmeans_movies = KMeans(n_clusters=n_clusters, random_state=42, n_init='auto')
+    kmeans_movies.fit(hybrid_movie_vector_full)
+
+    # Сохраняем модель
+    joblib.dump(kmeans_movies, 'models/movie_and_als_clusters.pkl')
+
+    # Логирование в MLflow
+    with mlflow.start_run(run_name="movie_and_als_clusters"):
+        mlflow.log_param("n_clusters", n_clusters)
+
+        # Метрики
+        metrics = {
+            "silhouette_score": float(silhouette_score(hybrid_movie_vector_full, kmeans_movies.labels_)),
+            "davies_bouldin_score": float(davies_bouldin_score(hybrid_movie_vector_full, kmeans_movies.labels_)),
+            "inertia": float(kmeans_movies.inertia_),  # внутренняя метрика KMeans
+        }
+
+        mlflow.log_metrics(metrics)
+        mlflow.sklearn.log_model(kmeans_movies, artifact_path="kmeans_model")
+
+        # Можно дополнительно сохранить другие параметры
+        with open("models/cluster_metrics_als.json", "w") as f:
+            json.dump({"metrics": metrics}, f, default=convert_numpy_types)
+
+        mlflow.log_artifact("models/cluster_metrics_als.json")
+
+    return kmeans_movies
+
+
+
+
+@task("data:user_vector_oftest_clusters")
+def user_vector_oftest_clusters():
+
+    with open("params.yaml", "r") as f:
+        paths = get_project_paths()
+        cluster = yaml.safe_load(f)["clustering"]
+
+    # Кластеризация
+    user_content_vector = np.load(paths["models_dir"] / "user_content_vector.npz")['vectors']
+
+    user_indices = np.arange(user_content_vector.shape[0])
+    train_idx, test_idx = train_test_split(user_indices, test_size=0.2, random_state=42)
+
+    user_vectors_train = user_content_vector[train_idx]
+    user_vectors_test = user_content_vector[test_idx]
+
+    user_vectors_train = user_vectors_train.astype(np.float64)
+    user_vectors_test = user_vectors_test.astype(np.float64)
+
+    np.savez_compressed(paths["models_dir"] / "user_vectors_train.npz", vectors=user_vectors_train)
+    np.savez_compressed(paths["models_dir"] / "user_vectors_test.npz", vectors=user_vectors_test)
+
+    # Кластеризация
+    n_clusters = cluster['n_clusters']
+    kmeans_users = KMeans(n_clusters=n_clusters, random_state=42, n_init='auto')
+    kmeans_users.fit(user_vectors_train)
+
+    # Сохраняем модель
+    joblib.dump(kmeans_users, paths["models_dir"] / 'kmeans_users.pkl')
+
+    # Логирование в MLflow
+    with mlflow.start_run(run_name="kmeans_users"):
+        mlflow.log_param("n_clusters", n_clusters)
+
+        # Метрики
+        metrics = {
+            "silhouette_score": float(silhouette_score(user_vectors_train, kmeans_users.labels_)),
+            "davies_bouldin_score": float(davies_bouldin_score(user_vectors_train, kmeans_users.labels_)),
+            "inertia": float(kmeans_users.inertia_),  # внутренняя метрика KMeans
+        }
+
+        mlflow.log_metrics(metrics)
+        mlflow.sklearn.log_model(kmeans_users, artifact_path="kmeans_users")
+
+        # Можно дополнительно сохранить другие параметры
+        with open(paths["models_dir"] / "cluster_metrics_user.json", "w") as f:
+            json.dump({"metrics": metrics}, f, default=convert_numpy_types)
+
+        mlflow.log_artifact(paths["models_dir"] / "cluster_metrics_user.json")
+
+    return kmeans_users
+
+
+
+
+
+
+
+
+
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--tasks", nargs="+", help="Список задач для выполнения")

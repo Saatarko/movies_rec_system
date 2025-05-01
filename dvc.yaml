@@ -98,3 +98,121 @@ stages:
       - models/cluster_metrics_raw.json
     params:
       - clustering.n_clusters
+
+  generate_rating_matrix_stage:
+    cmd: python scripts/data_processing.py --tasks data:generate_ratings_matrix
+    deps:
+      - data/raw
+      - scripts/data_processing.py
+    outs:
+    - data/processed/user_encoder.pkl
+    - data/processed/item_encoder.pkl
+    - data/processed/ratings_csr.npz
+
+  generate_als_vectors_stage:
+    cmd: python scripts/data_processing.py --tasks data:generate_als_vectors
+    deps:
+      - data/raw
+      - scripts/data_processing.py
+      - data/processed/ratings_csr.npz
+    outs:
+      - models/item_factors.npy
+      - models/als_model.pkl
+
+  combine_content_als_vector_stage:
+    cmd: python scripts/data_processing.py --tasks data:combine_content_als_vector
+    deps:
+      - models/item_factors.npy
+      - data/processed/item_encoder.pkl
+      - models/model_movies_full_vectors_raw.npz
+    outs:
+      - models/hybrid_movie_vector_full.npz
+
+
+  make_movie_vector_als_cluster_stage:
+    cmd: python scripts/cluster.py --tasks data:make_movie_vector_als_cluster
+    deps:
+      - models/hybrid_movie_vector_full.npz
+      - scripts/cluster.py
+    outs:
+      - models/movie_and_als_clusters.pkl
+    params:
+      - clustering.n_clusters
+
+  make_bridge_als_stage:
+    cmd: python scripts/train_autoencoder.py --tasks data:make_bridge_als
+    deps:
+      - models/item_factors.npy
+      - data/processed/item_encoder.pkl
+      - models/model_movies_full_vectors_raw.npz
+    outs:
+      - models/models_bridge.pkl
+      - models/bridge_scores.json
+    params:
+      - clustering.n_clusters
+
+  user_autoencoder_stage:
+    cmd: python scripts/train_autoencoder.py --tasks data:user_autoencoder
+    deps:
+      - data/processed/ratings_csr.npz
+      - scripts/train_autoencoder.py
+    outs:
+      - models/user_autoencoder_model.pt
+    metrics:
+      - models/user_metrics.json
+    params:
+      - autoencoder.encoding_dim
+      - autoencoder.num_epochs
+      - autoencoder.batch_size
+
+  train_nn_model_stage:
+    cmd: python scripts/train_autoencoder.py --tasks data:train_recommender
+    deps:
+      - scripts/train_autoencoder.py
+#      - models/user_content_vector.npz
+#      - models/model_movies_full_vectors_raw.npz
+      - data/raw/ratings.csv
+    outs:
+      - models/neural_model_best.pt
+      - models/neural_model_metrics.json
+
+  eval_user_stage:
+    cmd: python scripts/train_autoencoder.py --tasks data:eval_user_vectors
+    deps:
+      - data/processed/ratings_csr.npz
+      - scripts/train_autoencoder.py
+      - models/user_autoencoder_model.pt
+    outs:
+      - models/user_content_vector.npz
+    params:
+      - user_autoencoder.encoding_dim
+      - user_autoencoder.num_epochs
+      - user_autoencoder.batch_size
+
+  user_vector_oftest_clusters_stage:
+    cmd: python scripts/cluster.py --tasks data:user_vector_oftest_clusters
+    deps:
+#      - models/model_movies_full_vectors_raw.npz
+      - scripts/cluster.py
+    outs:
+      - models/user_vectors_train.npz
+      - models/user_vectors_test.npz
+      - models/kmeans_users.pkl
+      - models/cluster_metrics_user.json
+    params:
+      - clustering.n_clusters
+
+  train_embedding_nn_stage:
+    cmd: python scripts/train_autoencoder.py --tasks data:train_embedding_nn
+    deps:
+      - data/raw/ratings.csv
+    outs:
+      - models/embedding_model_best.pt
+      - models/embedding_user_vectors.npz
+      - models/embedding_item_vectors.npz
+    params:
+      - autoencoder.encoding_dim
+      - autoencoder.num_epochs
+      - autoencoder.batch_size
+
+

@@ -5,13 +5,13 @@ stages:
     deps:
     - path: data/raw
       hash: md5
-      md5: a59999018f20fa943c91990de8fc609c.dir
-      size: 1546911633
-      nfiles: 6
+      md5: 71826154a0074ba07d03e15cd2f08d86.dir
+      size: 1544985671
+      nfiles: 5
     - path: scripts/data_processing.py
       hash: md5
-      md5: 4084a6e4f058a88bf37288a925eecfdc
-      size: 5258
+      md5: cef8efc9c55cea818750cb0f3a804868
+      size: 9025
     outs:
     - path: data/processed/movie_vectors_scaled_test.npy
       hash: md5
@@ -71,8 +71,8 @@ stages:
       size: 118169344
     - path: scripts/train_autoencoder.py
       hash: md5
-      md5: 5ffc3924d90f88489be5bede900075f4
-      size: 14127
+      md5: c9a6b43f2c5a225aa7fbf979f7fb272b
+      size: 22051
     params:
       params.yaml:
         autoencoder.batch_size: 256
@@ -100,8 +100,8 @@ stages:
       size: 118169344
     - path: scripts/train_autoencoder.py
       hash: md5
-      md5: 5ffc3924d90f88489be5bede900075f4
-      size: 14127
+      md5: c9a6b43f2c5a225aa7fbf979f7fb272b
+      size: 22051
     params:
       params.yaml:
         autoencoder.batch_size: 256
@@ -129,8 +129,8 @@ stages:
       size: 1840522
     - path: scripts/cluster.py
       hash: md5
-      md5: c2677fb4e894ceff084e3f90de08a5f1
-      size: 4672
+      md5: cfce4c0cddfabfc6949dc9b991831831
+      size: 6378
     params:
       params.yaml:
         clustering.n_clusters: 150
@@ -144,13 +144,13 @@ stages:
     deps:
     - path: data/raw
       hash: md5
-      md5: a59999018f20fa943c91990de8fc609c.dir
-      size: 1546911633
-      nfiles: 6
+      md5: 71826154a0074ba07d03e15cd2f08d86.dir
+      size: 1544985671
+      nfiles: 5
     - path: scripts/data_processing.py
       hash: md5
-      md5: 4084a6e4f058a88bf37288a925eecfdc
-      size: 5258
+      md5: cef8efc9c55cea818750cb0f3a804868
+      size: 9025
     outs:
     - path: data/processed/movie_vectors_scaled_full.npy
       hash: md5
@@ -165,8 +165,8 @@ stages:
       size: 147777152
     - path: scripts/train_autoencoder.py
       hash: md5
-      md5: 5ffc3924d90f88489be5bede900075f4
-      size: 14127
+      md5: c9a6b43f2c5a225aa7fbf979f7fb272b
+      size: 22051
     params:
       params.yaml:
         autoencoder.batch_size: 256
@@ -190,8 +190,8 @@ stages:
       size: 147777152
     - path: scripts/train_autoencoder.py
       hash: md5
-      md5: 5ffc3924d90f88489be5bede900075f4
-      size: 14127
+      md5: 6ef4e1f7b105e3a2353de7b8937b8562
+      size: 30289
     params:
       params.yaml:
         autoencoder.batch_size: 256
@@ -215,8 +215,8 @@ stages:
       size: 2081454
     - path: scripts/cluster.py
       hash: md5
-      md5: c2677fb4e894ceff084e3f90de08a5f1
-      size: 4672
+      md5: cfce4c0cddfabfc6949dc9b991831831
+      size: 6378
     params:
       params.yaml:
         clustering.n_clusters: 150
@@ -237,3 +237,241 @@ stages:
       hash: md5
       md5: 341e07294bfedd2ee03336c5a04765fa
       size: 1667056
+  generate_rating_matrix_stage:
+    cmd: python scripts/data_processing.py --tasks data:generate_ratings_matrix
+    deps:
+    - path: data/raw
+      hash: md5
+      md5: 71826154a0074ba07d03e15cd2f08d86.dir
+      size: 1544985671
+      nfiles: 5
+    - path: scripts/data_processing.py
+      hash: md5
+      md5: cef8efc9c55cea818750cb0f3a804868
+      size: 9025
+    outs:
+    - path: data/processed/item_encoder.pkl
+      hash: md5
+      md5: bfdb281acd54a589c5373fa0fc2e4305
+      size: 666239
+    - path: data/processed/ratings_csr.npz
+      hash: md5
+      md5: 67fbb7120f4ab1186ddb42b9650c102c
+      size: 77421332
+    - path: data/processed/user_encoder.pkl
+      hash: md5
+      md5: 8fbdf1951924e228901f671c6aeb4385
+      size: 2648127
+  generate_als_vectors_stage:
+    cmd: python scripts/data_processing.py --tasks data:generate_als_vectors
+    deps:
+    - path: data/processed/ratings_csr.npz
+      hash: md5
+      md5: 67fbb7120f4ab1186ddb42b9650c102c
+      size: 77421332
+    - path: data/raw
+      hash: md5
+      md5: 71826154a0074ba07d03e15cd2f08d86.dir
+      size: 1544985671
+      nfiles: 5
+    - path: scripts/data_processing.py
+      hash: md5
+      md5: cef8efc9c55cea818750cb0f3a804868
+      size: 9025
+    outs:
+    - path: models/als_model.pkl
+      hash: md5
+      md5: 303d045fb9007cef981d185dfc7f04c5
+      size: 106039443
+    - path: models/item_factors.npy
+      hash: md5
+      md5: 0eb63275c67410cc6ed5909b4cdc55c6
+      size: 84729728
+  combine_content_als_vector_stage:
+    cmd: python scripts/data_processing.py --tasks data:combine_content_als_vector
+    deps:
+    - path: data/processed/item_encoder.pkl
+      hash: md5
+      md5: bfdb281acd54a589c5373fa0fc2e4305
+      size: 666239
+    - path: models/item_factors.npy
+      hash: md5
+      md5: 0eb63275c67410cc6ed5909b4cdc55c6
+      size: 84729728
+    - path: models/model_movies_full_vectors_raw.npz
+      hash: md5
+      md5: 162498fc4efa5e643e671056140e6205
+      size: 2081454
+    outs:
+    - path: models/hybrid_movie_vector_full.npz
+      hash: md5
+      md5: efccc70e7b668a904b3dfc31c2a67861
+      size: 6211007
+  make_movie_vector_als_cluster_stage:
+    cmd: python scripts/cluster.py --tasks data:make_movie_vector_als_cluster
+    deps:
+    - path: models/hybrid_movie_vector_full.npz
+      hash: md5
+      md5: efccc70e7b668a904b3dfc31c2a67861
+      size: 6211007
+    - path: scripts/cluster.py
+      hash: md5
+      md5: cfce4c0cddfabfc6949dc9b991831831
+      size: 6378
+    params:
+      params.yaml:
+        clustering.n_clusters: 150
+    outs:
+    - path: models/movie_and_als_clusters.pkl
+      hash: md5
+      md5: c9dce3fef5efc4c1cf305e4cf790510a
+      size: 219831
+  make_bridge_als_stage:
+    cmd: python scripts/train_autoencoder.py --tasks data:make_bridge_als
+    deps:
+    - path: data/processed/item_encoder.pkl
+      hash: md5
+      md5: bfdb281acd54a589c5373fa0fc2e4305
+      size: 666239
+    - path: models/item_factors.npy
+      hash: md5
+      md5: 0eb63275c67410cc6ed5909b4cdc55c6
+      size: 84729728
+    - path: models/model_movies_full_vectors_raw.npz
+      hash: md5
+      md5: 162498fc4efa5e643e671056140e6205
+      size: 2081454
+    params:
+      params.yaml:
+        clustering.n_clusters: 150
+    outs:
+    - path: models/bridge_scores.json
+      hash: md5
+      md5: 6361f15d91079bf7be72add8b9d97d65
+      size: 6702
+    - path: models/models_bridge.pkl
+      hash: md5
+      md5: 21250e42920587fe73b03aa8fba4b677
+      size: 20545423
+  user_autoencoder_stage:
+    cmd: python scripts/train_autoencoder.py --tasks data:user_autoencoder
+    deps:
+    - path: data/processed/ratings_csr.npz
+      hash: md5
+      md5: 67fbb7120f4ab1186ddb42b9650c102c
+      size: 77421332
+    - path: scripts/train_autoencoder.py
+      hash: md5
+      md5: 6ef4e1f7b105e3a2353de7b8937b8562
+      size: 30289
+    params:
+      params.yaml:
+        autoencoder.batch_size: 256
+        autoencoder.encoding_dim: 64
+        autoencoder.num_epochs: 100
+    outs:
+    - path: models/user_autoencoder_model.pt
+      hash: md5
+      md5: 2db5d376279e6b7ca4ca218e60bdef88
+      size: 341550495
+    - path: models/user_metrics.json
+      hash: md5
+      md5: f11c1991763c1f502234ef2088248852
+      size: 67
+  eval_user_stage:
+    cmd: python scripts/train_autoencoder.py --tasks data:eval_user_vectors
+    deps:
+    - path: data/processed/ratings_csr.npz
+      hash: md5
+      md5: 67fbb7120f4ab1186ddb42b9650c102c
+      size: 77421332
+    - path: models/user_autoencoder_model.pt
+      hash: md5
+      md5: 2db5d376279e6b7ca4ca218e60bdef88
+      size: 341550495
+    - path: scripts/train_autoencoder.py
+      hash: md5
+      md5: 6ef4e1f7b105e3a2353de7b8937b8562
+      size: 30289
+    params:
+      params.yaml:
+        user_autoencoder.batch_size: 128
+        user_autoencoder.encoding_dim: 64
+        user_autoencoder.num_epochs: 25
+    outs:
+    - path: models/user_content_vector.npz
+      hash: md5
+      md5: 6e77b2d3add42b8540fb3600519c8488
+      size: 80119939
+  user_vector_oftest_clusters_stage:
+    cmd: python scripts/cluster.py --tasks data:user_vector_oftest_clusters
+    deps:
+    - path: scripts/cluster.py
+      hash: md5
+      md5: 35d6d096b8829f7fd8158a20f8872a42
+      size: 8593
+    params:
+      params.yaml:
+        clustering.n_clusters: 150
+    outs:
+    - path: models/cluster_metrics_user.json
+      hash: md5
+      md5: c2e77351b31778f03a387566df6d9fd6
+      size: 129
+    - path: models/kmeans_users.pkl
+      hash: md5
+      md5: fde27a8d5b54b0f1453f4e9172d13faf
+      size: 1136663
+    - path: models/user_vectors_test.npz
+      hash: md5
+      md5: 5cc19453386e18bf9ced9c78dec37a0a
+      size: 19094505
+    - path: models/user_vectors_train.npz
+      hash: md5
+      md5: 0f8ad3f5e2fa3ae04e8b0dc6cf552d6d
+      size: 76361302
+  train_nn_model_stage:
+    cmd: python scripts/train_autoencoder.py --tasks data:train_recommender
+    deps:
+    - path: data/raw/ratings.csv
+      hash: md5
+      md5: 3b1de1d99821e0a35691836bb396059b
+      size: 933898879
+    - path: scripts/train_autoencoder.py
+      hash: md5
+      md5: 28ff843817888137b794f371a203112d
+      size: 30631
+    outs:
+    - path: models/neural_model_best.pt
+      hash: md5
+      md5: 7d47539368faf406fde10675698af963
+      size: 102605
+    - path: models/neural_model_metrics.json
+      hash: md5
+      md5: 9ceb39217810b768b017064cc28940e3
+      size: 150
+  train_embedding_nn_stage:
+    cmd: python scripts/train_autoencoder.py --tasks data:train_embedding_nn
+    deps:
+    - path: data/raw/ratings.csv
+      hash: md5
+      md5: 3b1de1d99821e0a35691836bb396059b
+      size: 933898879
+    params:
+      params.yaml:
+        autoencoder.batch_size: 256
+        autoencoder.encoding_dim: 64
+        autoencoder.num_epochs: 100
+    outs:
+    - path: models/embedding_item_vectors.npz
+      hash: md5
+      md5: 4e633323ead58b13e7e6780055cec00f
+      size: 19762584
+    - path: models/embedding_model_best.pt
+      hash: md5
+      md5: 49837a0be7ddb8d4bbb77e3d6ac830c0
+      size: 106142083
+    - path: models/embedding_user_vectors.npz
+      hash: md5
+      md5: b6c8737f2471f4d67b33021b64c7fac8
+      size: 78710050

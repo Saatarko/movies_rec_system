@@ -175,7 +175,8 @@ cython_debug/
 .csv
 data/
 .idea
-/mlruns
-/dvc
-/.dvc
+mlruns/
+dvc/
+mlartifacts/
 *.db
+models/
