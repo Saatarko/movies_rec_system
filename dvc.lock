@@ -247,8 +247,8 @@ stages:
       nfiles: 5
     - path: scripts/data_processing.py
       hash: md5
-      md5: cef8efc9c55cea818750cb0f3a804868
-      size: 9025
+      md5: 35809c44636cacdca2b67acda7a0d7b0
+      size: 9026
     outs:
     - path: data/processed/item_encoder.pkl
       hash: md5
@@ -362,8 +362,8 @@ stages:
       size: 77421332
     - path: scripts/train_autoencoder.py
       hash: md5
-      md5: 6ef4e1f7b105e3a2353de7b8937b8562
-      size: 30289
+      md5: faca59f781375be38898dc7ec7dba8b9
+      size: 36467
     params:
       params.yaml:
         autoencoder.batch_size: 256
@@ -372,11 +372,11 @@ stages:
     outs:
     - path: models/user_autoencoder_model.pt
       hash: md5
-      md5: 2db5d376279e6b7ca4ca218e60bdef88
+      md5: 4af7e20d5a7816526ded3ae9b545cb49
       size: 341550495
     - path: models/user_metrics.json
       hash: md5
-      md5: f11c1991763c1f502234ef2088248852
+      md5: e744d69af16cf567e7a17d785ad40ef1
       size: 67
   eval_user_stage:
     cmd: python scripts/train_autoencoder.py --tasks data:eval_user_vectors
@@ -494,3 +494,70 @@ stages:
       hash: md5
       md5: c5cd0f3c5ba05c632c48f1faef140650
       size: 1363075
+  build_user_segment_matrix_stage:
+    cmd: python scripts/data_processing.py --tasks data:build_user_segment_matrix
+    deps:
+    - path: data/raw
+      hash: md5
+      md5: 71826154a0074ba07d03e15cd2f08d86.dir
+      size: 1544985671
+      nfiles: 5
+    - path: scripts/data_processing.py
+      hash: md5
+      md5: bb3959030dad465bc59128ec31b2ffd0
+      size: 15290
+    outs:
+    - path: data/processed/user_segment_matrix.npz
+      hash: md5
+      md5: de7ac4ee96da1551129d673ce2b43108
+      size: 19143239
+  train_user_segment_autoencoder_stage:
+    cmd: python scripts/train_autoencoder.py --tasks data:train_user_segment_autoencoder
+    deps:
+    - path: scripts/train_autoencoder.py
+      hash: md5
+      md5: 51b0513579c2aa0b75950aeb3f5ee548
+      size: 39219
+    params:
+      params.yaml:
+        user_segment_autoencoder.batch_size: 256
+        user_segment_autoencoder.encoding_dim: 64
+        user_segment_autoencoder.learning_rate: 0.001
+        user_segment_autoencoder.num_epochs: 100
+    outs:
+    - path: models/user_segment_autoencoder.pt
+      hash: md5
+      md5: 7262d0207855ee553453d415b8d425d2
+      size: 434555
+    - path: models/user_segment_metrics.json
+      hash: md5
+      md5: d7c36550427d90b43e321fe0cc89d7de
+      size: 45
+  encode_user_segment_stage:
+    cmd: python scripts/train_autoencoder.py --tasks data:encode_user_segment
+    deps:
+    - path: scripts/train_autoencoder.py
+      hash: md5
+      md5: 2737a69b00733144b94ea4b20b566887
+      size: 40759
+    outs:
+    - path: data/processed/encoded_user_vectors.npz
+      hash: md5
+      md5: 96b4b3a9dafd33d8db580d9e20c21966
+      size: 77902298
+  cluster_user_segment_vectors_stage:
+    cmd: python scripts/cluster.py --tasks data:cluster_user_segment_vectors
+    deps:
+    - path: scripts/cluster.py
+      hash: md5
+      md5: 1be25ab80dd2cb8bb47889303fb7ae9d
+      size: 16274
+    outs:
+    - path: models/user_segment_cluster_model.pkl
+      hash: md5
+      md5: 4f2959fb36aff50d0de225716d4a73ae
+      size: 1303291
+    - path: models/user_segment_vector_scaler.pkl
+      hash: md5
+      md5: b8e606aa78c04c6af35630017b465893
+      size: 2151

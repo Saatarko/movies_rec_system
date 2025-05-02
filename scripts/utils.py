@@ -1,6 +1,7 @@
 import json
 import os
 from pathlib import Path
+from typing import List
 
 import gdown
 import joblib
@@ -363,3 +364,30 @@ def build_user_ratings_dict(movie_ids, ratings):
         raise ValueError("Длина списков movie_ids и ratings должна совпадать")
 
     return {int(mid): float(r) for mid, r in zip(movie_ids, ratings)}
+
+# функция добавления данных в таблицу продвижения/блокировки
+def update_importance_scores(
+        importance_df: pd.DataFrame,
+        movie_ids_to_promote:List[int]=None,
+        movie_ids_to_block:List[int]=None) -> pd.DataFrame :
+    """
+    Обновляет importance_df на основе списков фильмов для продвижения и блокировки.
+    Возвращает importance_df (датафрейм с блокированными фильмами)
+    """
+
+    promote_df = pd.DataFrame({
+        'movieId': movie_ids_to_promote or [],
+        'importance_score': 1
+    })
+
+    block_df = pd.DataFrame({
+        'movieId': movie_ids_to_block or [],
+        'importance_score': -1
+    })
+
+    updated = pd.concat([importance_df, promote_df, block_df], ignore_index=True)
+    importance_df = (
+        updated.drop_duplicates('movieId', keep='last')  # Сохраняем последнюю установку
+    )
+
+    return  importance_df

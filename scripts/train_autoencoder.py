@@ -3,7 +3,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from scipy.sparse import load_npz
+from scipy.sparse import load_npz, save_npz, csr_matrix
 from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
 import joblib
@@ -43,7 +43,14 @@ def get_project_paths():
     }
 
 
-def plot_losses(train_losses, val_losses):
+def plot_losses(train_losses, val_losses)->str:
+    """
+    Функция готовит графики для сохранения/передачи в mlflow
+    :param train_losses:
+    :param val_losses:
+    :return: Путь к изображению
+    """
+
     plt.figure(figsize=(10, 5))
     plt.plot(train_losses, label='Train Loss')
     plt.plot(val_losses, label='Validation Loss')
@@ -63,6 +70,9 @@ def plot_losses(train_losses, val_losses):
 
 
 class MovieAutoencoder(nn.Module):
+    """
+    Модель автоенкодера для контентного вектора
+    """
     def __init__(self, input_dim, encoding_dim):
         super().__init__()
         self.encoder = nn.Sequential(
@@ -87,6 +97,10 @@ class MovieAutoencoder(nn.Module):
         return self.decoder(z)
 
 class SparseRowDataset(Dataset):
+    """
+        Датасет автоенкодера для контентного вектора
+    """
+
     def __init__(self, sparse_matrix):
         self.matrix = sparse_matrix
 
@@ -99,6 +113,10 @@ class SparseRowDataset(Dataset):
 
 # Модель
 class Autoencoder(nn.Module):
+    """
+        Модель автоенкодера для пользовательского вектора
+    """
+
     def __init__(self, input_dim, encoding_dim=64):
         super().__init__()
         self.encoder = nn.Sequential(
@@ -120,6 +138,11 @@ class Autoencoder(nn.Module):
 
 @task("data:movie_autoencoder")
 def content_vector_autoencoder():
+
+    """
+    Функция обучения автоенкодера
+    возвращает сохраенную модель
+    """
     with open("params.yaml", "r") as f:
         config = yaml.safe_load(f)["autoencoder"]
         paths = get_project_paths()
@@ -220,6 +243,12 @@ def content_vector_autoencoder():
 
 @task("data:movie_autoencoder_raw")
 def content_vector_autoencoder_raw():
+    """
+       Функция обучения автоенкодера для полного вектора
+       Возвращает сохраенную модель
+    """
+
+
     with open("params.yaml", "r") as f:
         config = yaml.safe_load(f)["autoencoder"]
         paths = get_project_paths()
@@ -321,6 +350,10 @@ def content_vector_autoencoder_raw():
 
 @task("data:user_autoencoder")
 def user_vector_autoencoder():
+    """
+           Функция обучения автоенкодера для пользовательского вектора
+           Возвращает сохраенную модель
+    """
 
     # Загрузка параметров
     with open("params.yaml", "r") as f:
@@ -397,6 +430,9 @@ def user_vector_autoencoder():
 
 
 class RatingPredictor(nn.Module):
+    """
+    Модель нейросети для предикта рекомендаций
+    """
     def __init__(self, vector_dim, hidden_dim=128):
         super().__init__()
         self.net = nn.Sequential(
@@ -438,6 +474,11 @@ def root_mean_squared_error(y_true, y_pred):
 
 @task("data:train_recommender")
 def train_recommender_nn():
+
+    """
+    Функция обучения нейросети
+    Возвращает сохраенную модель
+    """
     paths = get_project_paths()
     config_path = Path("params.yaml")
 
@@ -557,6 +598,10 @@ def train_recommender_nn():
 
 @task("data:movie_eval_vector")
 def eval_content_train_test_vectors():
+    """
+        Функция кодирования контентного вектора
+    """
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     with open("params.yaml", "r") as f:
         config = yaml.safe_load(f)["autoencoder"]
@@ -611,6 +656,11 @@ def eval_content_train_test_vectors():
 
 @task("data:eval_user_vectors")
 def eval_user_vectors():
+
+    """
+     Функция кодирования пользовательского вектора
+    """
+
     with open("params.yaml", "r") as f:
         config = yaml.safe_load(f)["user_autoencoder"]
         paths = get_project_paths()
@@ -646,6 +696,11 @@ def eval_user_vectors():
 
 @task("data:movie_eval_vector_raw")
 def eval_content_train_test_vectors_raw():
+
+    """
+         Функция кодирования контентного вектора (для построчной разбивки)
+    """
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     with open("params.yaml", "r") as f:
         config = yaml.safe_load(f)["autoencoder"]
@@ -830,6 +885,10 @@ class UserItemIDRatingDataset(Dataset):
 
 @task("data:train_embedding_nn")
 def train_embedding_nn():
+    """
+    Функция кодирования контентного вектора на обученной нейросети
+    """
+
     paths = get_project_paths()
     config_path = Path("params.yaml")
 
@@ -942,28 +1001,125 @@ def train_embedding_nn():
 
 
 
+@task("data:train_user_segment_autoencoder")
+def train_user_segment_autoencoder():
+    """
+        Функция обучения автоенкодера для контентного сегментированного вектора
+    """
+
+    # Загрузка конфигурации
+    with open("params.yaml", "r") as f:
+        config = yaml.safe_load(f)["user_segment_autoencoder"]
+    paths = get_project_paths()
+
+    encoding_dim = config["encoding_dim"]
+    batch_size = config["batch_size"]
+    num_epochs = config["num_epochs"]
+    lr = config["learning_rate"]
+
+    # Загрузка сегментированной матрицы
+    segment_matrix = load_npz(paths["processed_dir"] / "user_segment_matrix.npz")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    input_dim = segment_matrix.shape[1]
+
+    # DataLoader
+    dataset = SparseRowDataset(segment_matrix)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=0)
+
+    # Модель
+    model = Autoencoder(input_dim=input_dim, encoding_dim=encoding_dim).to(device)
+    optimizer = optim.Adam(model.parameters(), lr=lr)
+    criterion = nn.MSELoss()
+
+    epoch_train_losses = []
+
+    with mlflow.start_run():
+        mlflow.log_params(config)
+
+        for epoch in range(num_epochs):
+            model.train()
+            total_loss = 0
+            start_epoch = time.time()
+
+            progress_bar = tqdm(dataloader, desc=f"Epoch {epoch + 1}/{num_epochs}", leave=False)
+            for i, batch in enumerate(progress_bar):
+                batch = batch.to(device)
+
+                output = model(batch)
+                mask = batch != 0
+                loss = ((output - batch) ** 2 * mask).sum() / mask.sum()
+
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+                total_loss += loss.item()
+
+                if i % 50 == 0:
+                    tqdm.write(f"[Epoch {epoch + 1} | Batch {i}/{len(dataloader)}] Loss: {loss.item():.4f}")
+
+            avg_loss = total_loss / len(dataloader)
+            epoch_train_losses.append(avg_loss)
+            tqdm.write(f"Epoch {epoch + 1} завершён за {time.time() - start_epoch:.1f} сек. Средний loss: {avg_loss:.4f}")
+
+        # Сохраняем модель
+        model_path = paths["models_dir"] / "user_segment_autoencoder.pt"
+        torch.save(model.state_dict(), model_path)
+        mlflow.pytorch.log_model(model, "model")
+
+        # Лог графика потерь
+        plot_path = plot_losses(epoch_train_losses, [])
+        mlflow.log_artifact(str(plot_path))
+
+        # Метрики
+        metrics_path = paths["models_dir"] / "user_segment_metrics.json"
+        with open(metrics_path, "w") as f:
+            json.dump({"final_train_loss": epoch_train_losses[-1]}, f, indent=4)
+        mlflow.log_artifact(str(metrics_path))
 
 
 
 
 
+@task("data:encode_user_segment")
+def encode_user_segment():
+    """
+    Функция кодирования контетного сегментированного вектора на автоенкодере
+    """
 
+    # Загрузка параметров
+    with open("params.yaml") as f:
+        config = yaml.safe_load(f)["user_autoencoder"]
+    paths = get_project_paths()
 
+    encoding_dim = config["encoding_dim"]
+    batch_size = config["batch_size"]
 
+    # Загрузка данных и модели
+    user_matrix = load_npz(paths["processed_dir"] / "user_segment_matrix.npz")
+    input_dim = user_matrix.shape[1]
+    dataset = SparseRowDataset(user_matrix)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
 
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+    model = Autoencoder(input_dim=input_dim, encoding_dim=encoding_dim).to(device)
+    model.load_state_dict(torch.load(paths["models_dir"] / "user_segment_autoencoder.pt", map_location=device))
+    model.eval()
 
+    # Прогон через энкодер
+    encoded_rows = []
 
+    with torch.no_grad():
+        for batch in tqdm(dataloader, desc="Encoding users"):
+            batch = batch.to(device)
+            encoded = model.encoder(batch)  # или model.encoder(batch) если используешь другую архитектуру
+            encoded_rows.append(encoded.cpu())
 
+    # Объединение и сохранение
+    encoded_matrix = torch.cat(encoded_rows).numpy()
+    save_npz(paths["processed_dir"] / "encoded_user_vectors.npz", csr_matrix(encoded_matrix))
 
-
-
-
-
-
-
-
-
+    print("Готово: encoded_user_vectors.npz")
 
 
 

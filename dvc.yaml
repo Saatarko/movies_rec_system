@@ -225,3 +225,52 @@ stages:
       - models/cluster_metrics_user_full.json
     params:
       - clustering.n_clusters
+
+  segment_movies_stage:
+    cmd: python scripts/data_processing.py --tasks data:segment_movies
+    deps:
+      - data/raw
+      - scripts/data_processing.py
+    outs:
+      - models/final_model.pkl
+      - models/scaler.pkl
+      - models/mlb.pkl
+
+  build_user_segment_matrix_stage:
+    cmd: python scripts/data_processing.py --tasks data:build_user_segment_matrix
+    deps:
+      - data/raw
+      - scripts/data_processing.py
+    outs:
+      - data/processed/user_segment_matrix.npz
+
+
+  train_user_segment_autoencoder_stage:
+    cmd: python scripts/train_autoencoder.py --tasks data:train_user_segment_autoencoder
+    deps:
+      - scripts/train_autoencoder.py
+    outs:
+      - models/user_segment_autoencoder.pt
+    metrics:
+      - models/user_segment_metrics.json
+    params:
+      - user_segment_autoencoder.encoding_dim
+      - user_segment_autoencoder.num_epochs
+      - user_segment_autoencoder.batch_size
+      - user_segment_autoencoder.learning_rate
+
+  encode_user_segment_stage:
+    cmd: python scripts/train_autoencoder.py --tasks data:encode_user_segment
+    deps:
+      - scripts/train_autoencoder.py
+    outs:
+      - data/processed/encoded_user_vectors.npz
+
+
+  cluster_user_segment_vectors_stage:
+    cmd: python scripts/cluster.py --tasks data:cluster_user_segment_vectors
+    deps:
+      - scripts/cluster.py
+    outs:
+      - models/user_segment_cluster_model.pkl
+      - models/user_segment_vector_scaler.pkl

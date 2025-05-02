@@ -31,3 +31,14 @@ embedding_recommender:
   learning_rate: 0.001
   patience: 3
   hidden_dim: 128
+user_segment_autoencoder:
+  encoding_dim: 64
+  batch_size: 256
+  num_epochs: 100
+  learning_rate: 0.001
+cluster_user_vectors:
+  max_k: 20         # максимум для K в методе локтя и силуэта
+  random_state: 42
+  batch_size: 1024
+  silhouette_sample_size: 10000
+  force_k: 18

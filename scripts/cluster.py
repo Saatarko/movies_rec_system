@@ -4,14 +4,18 @@ import joblib
 import numpy as np
 import pandas as pd
 import yaml
-from sklearn.cluster import KMeans
-from sklearn.metrics import silhouette_score, davies_bouldin_score
+from matplotlib import pyplot as plt
+from scipy.sparse import load_npz
+from sklearn.cluster import KMeans, MiniBatchKMeans
+from sklearn.metrics import silhouette_score, davies_bouldin_score, calinski_harabasz_score
 import json
 import mlflow
 import mlflow.pytorch
 import sys, os
 import numpy as np
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from tqdm import tqdm
 
 from utils import get_project_paths, convert_numpy_types
 
@@ -22,6 +26,11 @@ from task_registry import task, main
 
 @task("data:generate_movie_vector_oftest_clusters")
 def make_movie_vector_oftest_clusters():
+    """
+    Функция кластеризации с учетом разбивки вектора для оффлайн тестирования (на train/test).
+    С возможностью запуска Airflow-> DVC и mlflow логированием
+
+    """
     # Загрузка данных
     with open("params.yaml", "r") as f:
         paths = get_project_paths()
@@ -62,7 +71,11 @@ def make_movie_vector_oftest_clusters():
 
 @task("data:generate_movie_vector_oftest_clusters_raw")
 def make_movie_vector_oftest_clusters_raw():
+    """
+    Функция кластеризации общего контентного вектора.
+    С возможностью запуска Airflow-> DVC и mlflow логированием
 
+    """
     with open("params.yaml", "r") as f:
         paths = get_project_paths()
         cluster = yaml.safe_load(f)["clustering"]
@@ -112,7 +125,11 @@ def make_movie_vector_oftest_clusters_raw():
 
 @task("data:make_movie_vector_als_cluster")
 def make_movie_vector_als_cluster():
+    """
+    Функция кластеризации гибридного вектора (контент + als)
+    С возможностью запуска Airflow-> DVC и mlflow логированием
 
+    """
     with open("params.yaml", "r") as f:
         paths = get_project_paths()
         cluster = yaml.safe_load(f)["clustering"]
@@ -155,7 +172,11 @@ def make_movie_vector_als_cluster():
 
 @task("data:user_vector_oftest_clusters")
 def user_vector_oftest_clusters():
+    """
+    Функция кластеризации user вектора с учетом разбивки вектора для оффлайн тестирования (на train/test).
+    С возможностью запуска Airflow-> DVC и mlflow логированием
 
+     """
     with open("params.yaml", "r") as f:
         paths = get_project_paths()
         cluster = yaml.safe_load(f)["clustering"]
@@ -208,7 +229,11 @@ def user_vector_oftest_clusters():
 
 @task("data:user_vector_full_clusters")
 def user_vector_full_clusters():
+    """
+    Функция кластеризации полного user вектора
+    С возможностью запуска Airflow-> DVC и mlflow логированием
 
+     """
     with open("params.yaml", "r") as f:
         paths = get_project_paths()
         cluster = yaml.safe_load(f)["clustering"]
@@ -247,9 +272,112 @@ def user_vector_full_clusters():
     return kmeans_users
 
 
+@task("data:cluster_user_segment_vectors")
+def cluster_user_segment_vectors():
 
+    with open("params.yaml", "r") as f:
+        config = yaml.safe_load(f)["cluster_user_vectors"]
 
+    paths = get_project_paths()
+    max_k = config["max_k"]
+    random_state = config.get("random_state", 42)
+    force_k = 18
 
+    print("[tgdm] Загрузка пользовательских векторов...")
+    encoded_sparse = load_npz(paths["processed_dir"] / "encoded_user_vectors.npz")
+    encoded_matrix = encoded_sparse.toarray()
+
+    scaler = StandardScaler()
+    vectors_scaled = scaler.fit_transform(encoded_matrix)
+
+    print("[tgdm] Запуск кластеризации...")
+    metrics_table = []
+    k_values = range(2, max_k + 1)
+
+    with mlflow.start_run():
+        for k in k_values:
+            model = MiniBatchKMeans(n_clusters=k, random_state=random_state, batch_size=1024)
+            labels = model.fit_predict(vectors_scaled)
+
+            silhouette = silhouette_score(
+                vectors_scaled, labels, sample_size=10000, random_state=random_state
+            )
+            ch_score = calinski_harabasz_score(vectors_scaled, labels)
+            db_score = davies_bouldin_score(vectors_scaled, labels)
+            inertia = model.inertia_
+
+            metrics_table.append({
+                "k": k,
+                "silhouette": silhouette,
+                "calinski_harabasz": ch_score,
+                "davies_bouldin": db_score,
+                "inertia": inertia
+            })
+
+        df_metrics = pd.DataFrame(metrics_table)
+
+        # Определение лучшего k по большинству критериев
+        ranks = pd.DataFrame()
+        ranks["k"] = df_metrics["k"]
+        ranks["silhouette_rank"] = df_metrics["silhouette"].rank(ascending=False)
+        ranks["ch_rank"] = df_metrics["calinski_harabasz"].rank(ascending=False)
+        ranks["db_rank"] = df_metrics["davies_bouldin"].rank(ascending=True)
+        ranks["inertia_rank"] = df_metrics["inertia"].rank(ascending=True)
+        ranks["total_rank"] = ranks[
+            ["silhouette_rank", "ch_rank", "db_rank", "inertia_rank"]
+        ].sum(axis=1)
+
+        # Итоговое best_k
+        if force_k is not None:
+            best_k = force_k
+            print(f"[tgdm] Используется заданное force_k = {best_k}")
+        else:
+            best_k = int(ranks.sort_values("total_rank")["k"].iloc[0])
+            print(f"[tgdm] Лучшее K по множеству метрик: {best_k}")
+
+        final_model = MiniBatchKMeans(n_clusters=best_k, random_state=random_state, batch_size=1024)
+        final_labels = final_model.fit_predict(vectors_scaled)
+
+        # Сохранение модели и артефактов
+        model_path = paths["models_dir"] / "user_segment_cluster_model.pkl"
+        scaler_path = paths["models_dir"] / "user_segment_vector_scaler.pkl"
+        joblib.dump(final_model, model_path)
+        joblib.dump(scaler, scaler_path)
+        mlflow.log_artifact(str(model_path))
+        mlflow.log_artifact(str(scaler_path))
+
+        user_clusters = pd.DataFrame({"user_id": np.arange(len(final_labels)), "cluster": final_labels})
+        cluster_csv_path = paths["processed_dir"] / "user_clusters.csv"
+        user_clusters.to_csv(cluster_csv_path, index=False)
+        mlflow.log_artifact(str(cluster_csv_path))
+
+        # Таблица метрик
+        metrics_csv_path = paths["models_dir"] / "user_cluster_metrics.csv"
+        df_metrics.to_csv(metrics_csv_path, index=False)
+        mlflow.log_artifact(str(metrics_csv_path))
+
+        # Визуализация
+        fig, ax = plt.subplots(2, 2, figsize=(12, 10))
+        ax[0, 0].plot(df_metrics["k"], df_metrics["inertia"], marker='o')
+        ax[0, 0].set_title("Inertia")
+        ax[0, 1].plot(df_metrics["k"], df_metrics["silhouette"], marker='o')
+        ax[0, 1].set_title("Silhouette Score")
+        ax[1, 0].plot(df_metrics["k"], df_metrics["calinski_harabasz"], marker='o')
+        ax[1, 0].set_title("Calinski-Harabasz Score")
+        ax[1, 1].plot(df_metrics["k"], df_metrics["davies_bouldin"], marker='o')
+        ax[1, 1].set_title("Davies-Bouldin Score")
+
+        for a in ax.flat:
+            a.set_xlabel("k")
+
+        fig.tight_layout()
+        fig_path = paths["models_dir"] / "user_cluster_selection.png"
+        fig.savefig(fig_path)
+        mlflow.log_artifact(str(fig_path))
+
+        mlflow.log_param("best_k", best_k)
+        mlflow.log_metric("best_silhouette", df_metrics.loc[df_metrics.k == best_k, "silhouette"].values[0])
+        print(f"[tgdm] Сегментация завершена. Лучшее k: {best_k}")
 
 
 

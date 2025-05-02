@@ -1,6 +1,7 @@
 from scripts.recommend import get_rec_on_train_content_vector, get_top_movies, get_rec_on_test_content_vector, \
     get_combine_content_vector, get_rec_on_train_content_vector_raw, get_als_and_content_vector, add_new_films, \
-    get_recommendation_on_user_vector, predict_recommendations, add_new_user_to_system, get_recommendation_new_user
+    get_recommendation_on_user_vector, predict_recommendations, get_new_user, recommend_by_watched_ids, \
+    get_rec_on_content_vector_block, get_recommendations_for_user_streamlit
 from scripts.utils import get_all_genres, get_project_paths, visualize_recommendations_df, build_user_ratings_dict
 
 import streamlit as st
@@ -9,6 +10,18 @@ import pandas as pd
 
 
 st.set_page_config(page_title="🎬 Movie Recommender", layout="wide")
+
+st.markdown(
+    """
+    <style>
+    /* Ограничение ширины сайдбара через min/max и % от экрана */
+    [data-testid="stSidebar"] {
+        width: clamp(250px, 25vw, 400px) !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
 st.title("🎥 Movie Recommendation System")
 
@@ -26,8 +39,11 @@ mode = st.sidebar.selectbox("Выбери режим:", [
     "Гибридные рекомендации",
     "Рекомендации по пользовательскому вектору",
     "Гибридные рекомендации на нейросети",
+    "Рекомендации на управляемой кластеризации (жанры,рейтинг)",
+    "Рекомендации на управляемой кластеризации (пользователи,жанры)",
     "Добавление нового фильма",
     "Добавление нового пользователя",
+    "Продвижение/блокировка фильмов",
 ])
 
 st.sidebar.markdown("---")
@@ -38,6 +54,18 @@ if movie_id in movies["movieId"].values:
     st.sidebar.success(f"Название: {movies[movies['movieId'] == movie_id]['title'].values[0]}")
 else:
     st.sidebar.warning("Фильм с таким ID не найден.")
+
+st.sidebar.markdown("---")
+
+search_query = st.sidebar.text_input("🔍 Поиск фильма по названию")
+
+if search_query:
+    search_results = movies[movies["title"].str.contains(search_query, case=False, na=False)]
+    if not search_results.empty:
+        st.sidebar.markdown("### 🔽 Найденные фильмы:")
+        st.sidebar.dataframe(search_results[["movieId", "title"]], use_container_width=True)
+    else:
+        st.sidebar.warning("Фильмы не найдены.")
 
 # --- Основная логика ---
 if mode == "Холодный старт":
@@ -384,7 +412,7 @@ elif mode == "Добавление нового пользователя":
             movie_ids = [int(x.strip()) for x in movie_ids_input.split(",") if x.strip()]
             ratings = [float(x.strip()) for x in ratings_input.split(",") if x.strip()]
 
-            final_df, new_user_idx = get_recommendation_new_user(movie_ids, ratings)
+            final_df, new_user_idx = get_new_user(movie_ids, ratings)
             st.success(f"✅ Пользователь добавлен. Новый индекс: {new_user_idx}")
             stage_rec = True
 
@@ -397,6 +425,167 @@ elif mode == "Добавление нового пользователя":
 
         except Exception as e:
             st.error(f"❌ Ошибка: {e}")
+
+elif mode == "Рекомендации на управляемой кластеризации (жанры,рейтинг)":
+    st.subheader("👤 Рекомендации на основе управляемой кластеризации")
+    st.info("Рекомендации на основе управляемой кластеризации  (сегментация по жанрам и рейтингу)")
+
+    stage_rec = False
+
+    # Одна горизонтальная линия: поле + кнопка
+    with st.container():
+        col1, col2 = st.columns([5, 1])  # Сделал пропорцию 5 к 1 для красоты
+
+        with col1:
+            movie_ids_input = st.text_input(
+                "Введите ID фильмов через запятую:",
+                placeholder="Например: 1, 23, 45",
+                label_visibility="collapsed"  # Убираем дублирующий лейбл над полем
+            )
+
+        with col2:
+            show_recs = st.button("Показать", use_container_width=True)  # Кнопка растягивается на всю ширину колонки
+
+    # Логика обработки после нажатия кнопки
+    if show_recs:
+        if movie_ids_input:
+            try:
+                # Преобразуем введённый текст в список чисел
+                movie_ids = [int(id_.strip()) for id_ in movie_ids_input.split(",") if id_.strip().isdigit()]
+
+                if movie_ids:
+                    stage_rec = True
+                    result,  recommendation_info = recommend_by_watched_ids(
+                        movie_ids)
+
+                else:
+                    st.error("Введите хотя бы один корректный ID фильма.")
+            except Exception as e:
+                st.error(f"Ошибка обработки ввода: {e}")
+        else:
+            st.error("Пожалуйста, введите хотя бы один ID фильма.")
+
+    # Вывод рекомендаций на всю ширину
+    if stage_rec:
+
+        for movie in recommendation_info:
+            movie_id = movie['movie_id']
+            title = movie['title']
+            genres = movie['genres']
+            # Формируем строку с нужным форматом
+            st.write(f"Получаем рекомендации для фильма с ID: {movie_id} (Название: {title}) (Жанры: {genres})")
+
+        st.markdown("---")  # Разделительная линия для красоты
+        st.subheader("🎬 Рекомендации на основе управляемой кластеризации(сегментации по жанрам и рейтингу):")
+        st.dataframe(result, use_container_width=True)
+
+elif mode == "Рекомендации на управляемой кластеризации (пользователи,жанры)":
+    st.subheader("Рекомендации на управляемой кластеризации (пользователи,жанры)")
+    st.info("Рекомендации на основе управляемой кластеризации  (сегментация по пользователям и жанрам)")
+
+    stage_rec = False
+
+    # Одна горизонтальная линия: поле + кнопка
+    with st.container():
+        col1, col2 = st.columns([5, 1])  # Сделал пропорцию 5 к 1 для красоты
+
+        with col1:
+            user_id = st.sidebar.number_input("Введите ID пользователя", min_value=1)
+
+        with col2:
+            show_recs = st.button("Показать", use_container_width=True)  # Кнопка растягивается на всю ширину колонки
+
+    # Логика обработки после нажатия кнопки
+    if show_recs:
+            try:
+                # Преобразуем введённый текст в список чисел
+                movie_ids = int(user_id)
+
+                if movie_ids:
+                    stage_rec = True
+                    recommendations = get_recommendations_for_user_streamlit(user_id)
+
+                else:
+                    st.error("Введите хотя бы один корректный ID пользователя.")
+            except Exception as e:
+                st.error(f"Ошибка обработки ввода: {e}")
+
+
+    # Вывод рекомендаций на всю ширину
+    if stage_rec:
+
+
+        st.write(f"Получаем рекомендации для пользователя с ID: {movie_id}")
+
+        st.markdown("---")  # Разделительная линия для красоты
+        st.subheader("🎬 Рекомендации на основе управляемой кластеризации(сегментация по пользователям и жанрам):")
+        st.dataframe(recommendations, use_container_width=True)
+
+
+elif mode == "Продвижение/блокировка фильмов":
+    st.subheader("Продвижение/блокировка фильмов")
+    st.info(
+        "Продвижение фильма выводит его в отдельное окно. Блокировка фильма убирает его из общей выдачи."
+    )
+
+    # Поля для ввода
+    promote_input = st.text_input(
+        "Введите список movieId для продвижения через запятую (например: 1,50,300)"
+    )
+    block_input = st.text_input(
+        "Введите список movieId для блокировки через запятую (например: 1,50,300)"
+    )
+
+    # Преобразуем строки в списки чисел
+    promote_ids = (
+        [int(x.strip()) for x in promote_input.split(",") if x.strip().isdigit()]
+        if promote_input else []
+    )
+    block_ids = (
+        [int(x.strip()) for x in block_input.split(",") if x.strip().isdigit()]
+        if block_input else []
+    )
+
+    # Кнопка запуска рекомендации
+    if st.button("Применить списки"):
+        # Вызываем функцию с фильтрами
+        all_recommendations, recommendation_info, temp_list = get_rec_on_content_vector_block(
+            [1, 10, 100],
+            promote_ids,
+            block_ids
+        )
+
+        # Отображаем горячие новинки с подсветкой
+        st.markdown("---")
+        st.subheader("🎬 Горячие новинки")
+
+        def highlight_promoted(row):
+            if row["movieId"] in promote_ids:
+                return ["background-color: #ffd966"] * len(row)
+            else:
+                return [""] * len(row)
+
+        styled_temp_list = temp_list.style.apply(highlight_promoted, axis=1)
+        st.dataframe(styled_temp_list, use_container_width=True)
+
+        # Отображаем рекомендации
+        st.markdown("---")
+        st.subheader("🎬 Рекомендации с учетом блокировок")
+        if all_recommendations.empty:
+            st.warning("Нет рекомендаций после фильтрации.")
+        else:
+            st.dataframe(all_recommendations, use_container_width=True)
+
+        # Показываем список заблокированных фильмов
+        st.markdown("---")
+        if block_ids:
+            st.subheader("🎬 Заблокированные фильмы")
+            for movie_id in block_ids:
+                try:
+                    title = movies[movies['movieId'] == movie_id]['title'].values[0]
+                    st.info(f"{title}")
+                except IndexError:
+                    st.warning(f"Фильм с movieId {movie_id} не найден.")
 
 st.markdown("---")
 

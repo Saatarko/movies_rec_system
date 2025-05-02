@@ -11,18 +11,18 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # === DAG конфигурация ===
 with DAG(
-    dag_id="user_autoencoder_and_rec_nn",
+    dag_id="encode_user_segment",
     start_date=datetime(2024, 1, 1),
     schedule=None,  # или cron выражение
     catchup=False,
     tags=["recommender", "dvc", "mlflow", 'user']
 ) as dag:
 
-    user_autoencoder = BashOperator(
-        task_id="user_autoencoder",
-        bash_command="cd /home/saatarko/PycharmProjects/movies_rec_system && dvc repro user_autoencoder_stage",
-        doc_md = "**Тренировка автоэнкодера пользователей**"
+    encode_user_segment = BashOperator(
+        task_id="encode_user_segment",
+        bash_command="cd /home/saatarko/PycharmProjects/movies_rec_system && dvc repro encode_user_segment_stage",
+        doc_md = "**Получение вектора на автоэнкодере**"
     )
 
 
-    user_autoencoder
+    encode_user_segment

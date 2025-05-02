@@ -9,10 +9,10 @@ from torch.utils.data import Dataset, DataLoader, TensorDataset, random_split
 from transformers import BertTokenizer, BertModel
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import MinMaxScaler, MaxAbsScaler
+from sklearn.preprocessing import MinMaxScaler, MaxAbsScaler, StandardScaler, MultiLabelBinarizer
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.neighbors import NearestNeighbors
-from sklearn.cluster import AgglomerativeClustering
+from sklearn.cluster import AgglomerativeClustering, MiniBatchKMeans
 from sklearn.metrics.pairwise import euclidean_distances, cosine_distances
 from scipy.sparse import csr_matrix, save_npz, load_npz
 import implicit
@@ -48,7 +48,7 @@ from datetime import datetime
 import lightgbm as lgb
 import rbo
 from matplotlib_venn import venn2
-from sklearn.metrics import precision_score, mean_squared_error
+from sklearn.metrics import precision_score, mean_squared_error, silhouette_score
 from collections import defaultdict, Counter, OrderedDict
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import r2_score, mean_absolute_error
@@ -65,6 +65,10 @@ mlflow.set_tracking_uri("http://localhost:5000")
 
 @task("data:generate_content_vector")
 def generate_content_vector_for_offtest():
+    """
+    Собирает и нормализует контентный вектор (для разделения по столбцам)
+    """
+
     # Путь к корню проекта (там где data/, scripts/ и так далее)
     paths = get_project_paths()
     genome_tags = pd.read_csv(paths["raw_dir"] / "genome-tags.csv")
@@ -104,6 +108,10 @@ def generate_content_vector_for_offtest():
 
 @task("data:generate_content_vector_raw")
 def generate_content_vector_raw():
+    """
+        Собирает и нормализует контентный вектор (при построчном разделении)
+    """
+
     paths = get_project_paths()
     genome_tags = pd.read_csv(paths["raw_dir"] / "genome-tags.csv")
     genome_scores = pd.read_csv(paths["raw_dir"] / "genome-scores.csv")
@@ -123,6 +131,10 @@ def generate_content_vector_raw():
 
 @task("data:generate_ratings_matrix")
 def generate_and_save_ratings_matrix():
+    """
+    Собирает, кодирует и нормализует матрицу взаимодействий
+    """
+
     # Пути
     paths = get_project_paths()
     ratings = pd.read_csv(paths["raw_dir"] / "ratings.csv")
@@ -152,6 +164,10 @@ def generate_and_save_ratings_matrix():
 
 @task("data:generate_als_vectors")
 def generate_als_vectors():
+    """
+    Собирает ALS вектор
+    """
+
     with mlflow.start_run(run_name="ALS full training"):
         paths = get_project_paths()
         ratings_csr = load_npz(paths["processed_dir"] / "ratings_csr.npz")
@@ -189,6 +205,9 @@ def generate_als_vectors():
 
 @task("data:combine_content_als_vector")
 def combine_content_als_vector():
+    """
+        Собирает гибридный вектор (контент + ALS вектор)
+    """
 
     paths = get_project_paths()
     genome_scores = pd.read_csv(paths["raw_dir"] / "genome-scores.csv")
@@ -214,6 +233,163 @@ def combine_content_als_vector():
     np.savez_compressed(paths["models_dir"] /"hybrid_movie_vector_full.npz", vectors=hybrid_movie_vector_full)
 
     return hybrid_movie_vector_full
+
+
+
+
+@task("data:segment_movies")
+def segment_movies(mlflow_experiment: str = "MovieSegmentation"):
+    """
+    Собирает сегментированную (по жанрам и рейтингу) контентую матрицу
+    """
+
+    paths = get_project_paths()
+    movies = pd.read_csv(paths["raw_dir"] / "movies.csv")
+    ratings = pd.read_csv(paths["raw_dir"] / "ratings.csv")
+
+    mlflow.set_experiment(mlflow_experiment)
+
+    with mlflow.start_run(run_name="Movie Clustering"):
+        # 1. Подготовка жанров
+        movies['genres'] = movies['genres'].apply(lambda x: x.split('|') if isinstance(x, str) else [])
+        mlb = MultiLabelBinarizer()
+        genre_matrix = pd.DataFrame(mlb.fit_transform(movies['genres']), columns=mlb.classes_, index=movies.index)
+
+        # 2. Средний рейтинг и количество оценок
+        agg = ratings.groupby('movieId')['rating'].agg(['mean', 'count']).reset_index()
+        agg.columns = ['movieId', 'mean_rating', 'rating_count']
+
+        # 3. Объединение с movies
+        df = movies.merge(agg, on='movieId', how='left').fillna({'mean_rating': 0, 'rating_count': 0})
+        df = pd.concat([df[['movieId', 'mean_rating', 'rating_count']], genre_matrix], axis=1)
+
+        # 4. Масштабирование
+        scaler = StandardScaler()
+        features = scaler.fit_transform(df.drop(columns=['movieId']))
+
+        # 5. Поиск оптимального k (локоть + силуэт)
+        distortions = []
+        silhouettes = []
+        K = range(2, 21)
+
+        for k in K:
+            kmeans = MiniBatchKMeans(n_clusters=k, random_state=42, batch_size=1024)
+            labels = kmeans.fit_predict(features)
+            distortions.append(kmeans.inertia_)
+            silhouettes.append(silhouette_score(features, labels))
+
+        # 6. Логирование графиков
+        fig, ax = plt.subplots()
+        ax.plot(K, distortions, marker='o')
+        ax.set_title('Метод локтя')
+        ax.set_xlabel('Количество кластеров')
+        ax.set_ylabel('Инерция')
+        mlflow.log_figure(fig, "elbow_plot.png")
+        plt.close(fig)
+
+        fig, ax = plt.subplots()
+        ax.plot(K, silhouettes, marker='x', color='green')
+        ax.set_title('Коэффициент силуэта')
+        ax.set_xlabel('Количество кластеров')
+        ax.set_ylabel('Silhouette Score')
+        mlflow.log_figure(fig, "silhouette_plot.png")
+        plt.close(fig)
+
+        # 7. Финальная кластеризация
+        best_k = K[np.argmax(silhouettes)]
+        final_model = MiniBatchKMeans(n_clusters=best_k, random_state=42)
+        df['cluster'] = final_model.fit_predict(features)
+
+        # 8. Сохранение модели
+        model_path = paths["models_dir"] / 'final_model.pkl'
+        joblib.dump(final_model, model_path)
+        mlflow.log_artifact(str(model_path))
+        scaler_path = paths["models_dir"] / 'scaler.pkl'
+        mlb_path = paths["models_dir"] / 'mlb.pkl'
+
+        joblib.dump(final_model, model_path)
+        joblib.dump(scaler, scaler_path)
+        joblib.dump(mlb, mlb_path)
+
+        mlflow.log_artifact(str(model_path))
+        mlflow.log_artifact(str(scaler_path))
+        mlflow.log_artifact(str(mlb_path))
+
+        # 9. Логирование результатов
+        mlflow.log_param("best_k", best_k)
+        mlflow.log_metric("best_silhouette", max(silhouettes))
+
+        result_path = paths["processed_dir"] / "movie_clusters.csv"
+        df[['movieId', 'cluster']].to_csv(result_path, index=False)
+        mlflow.log_artifact(str(result_path))
+
+
+        return str(result_path)
+
+
+@task("data:build_user_segment_matrix")
+def build_user_segment_matrix() -> pd.DataFrame:
+    """
+       Собирает сегментированную (по оценкам и жанрам) гибридную матрицу
+    """
+
+    paths = get_project_paths()
+    movies = pd.read_csv(paths["raw_dir"] / "movies.csv")
+    ratings = pd.read_csv(paths["raw_dir"] / "ratings.csv")
+    # Фильтруем положительные оценки
+    positive_ratings = ratings[ratings["rating"] > 3.5]
+
+    # Подключаем жанры
+    movies = movies[["movieId", "genres"]].copy()
+    movies["genres"] = movies["genres"].apply(lambda g: g.split("|"))
+
+    # Расширим на жанры
+    exploded_movies = movies.explode("genres")
+
+    # Подключаем к оценкам
+    merged = positive_ratings.merge(exploded_movies, on="movieId")
+
+    # Для каждого пользователя: % жанров
+    genre_counts = (
+        merged.groupby(["userId", "genres"]).size().unstack(fill_value=0)
+    )
+    genre_distrib = genre_counts.div(genre_counts.sum(axis=1), axis=0)  # доли
+
+    # Для каждого пользователя: средняя оценка по кластерам фильмов
+    # Подгружаем модель кластеризации
+    model = joblib.load(paths["models_dir"] / 'final_model.pkl')
+
+    # Здесь предполагается, что у тебя есть сохранённые movie_features (те, по которым обучался кластеризатор)
+    # загрузи и предскажи кластеры
+    movie_features = pd.read_csv(paths["processed_dir"] / "movie_clusters.csv")
+
+    # Добавим к фильмам кластеры
+    movie_cluster_map = movie_features[["movieId", "cluster"]]
+    merged_clusters = positive_ratings.merge(movie_cluster_map, on="movieId")
+
+    cluster_stats = (
+        merged_clusters.groupby(["userId", "cluster"])["rating"]
+        .mean()
+        .unstack(fill_value=0)
+        .add_prefix("cluster_rating_")
+    )
+
+    # Плотность оценок (общее кол-во положительных фильмов)
+    rating_density = (
+        positive_ratings.groupby("userId").size().rename("positive_count")
+    )
+
+    # Объединяем всё
+    final_df = genre_distrib.join(cluster_stats, how="outer").join(rating_density, how="outer")
+    final_df = final_df.fillna(0)
+
+    save_npz(paths["processed_dir"] /"user_segment_matrix.npz", csr_matrix(final_df.values))
+
+    # при желании сохранить как CSV для отладки
+    final_df.to_csv(paths["processed_dir"] /"user_segment_matrix.csv")
+
+    return final_df
+
 
 
 if __name__ == "__main__":
