@@ -5,7 +5,7 @@
 - DVC, Airflow, MLflow
 - Scikit-learn (KMeans), Implicit ALS
 - Autoencoder, PyTorch (RatingPredictor)
-- Интерактивный макет выложен на https://huggingface.co/spaces/Saatarkin/Rec_sys:
+- Интерактивный макет выложен на https://huggingface.co/spaces/Saatarkin/Rec_systems:
   (*Предупреждение, серввер уходит в спящий режим после 48 часовой неактивности. Любой запрос выведет его из 
 этого состояния, но потребуется около 20-30 минут (сервер будет заружать в память датасеты размером около 1.5 Гб))
 
@@ -110,7 +110,7 @@
 - DVC, Airflow, MLflow
 - Scikit-learn (KMeans), Implicit ALS
 - Autoencoder, PyTorch (RatingPredictor)
-- Interactive mockup is available at https://huggingface.co/spaces/Saatarkin/Rec_sys:
+- Interactive mockup is available at https://huggingface.co/spaces/Saatarkin/Rec_systems:
 (*Warning, the server goes into sleep mode after 48 hours of inactivity. Any request will wake it up from this state, but it will take about 20-30 minutes (the server will load datasets of about 1.5 GB into memory))
 ---
 ## Introduction
