@@ -1,8 +1,17 @@
 # 🌐 Проект: Рекомендательная система
 
+
+## 🧰 Используемые технологии
+- DVC, Airflow, MLflow
+- Scikit-learn (KMeans), Implicit ALS
+- Autoencoder, PyTorch (RatingPredictor)
+- Интерактивный макет выложен на https://huggingface.co/spaces/Saatarkin/Rec_sys:
+  (*Предупреждение, серввер уходит в спящий режим после 48 часовой неактивности. Любой запрос выведет его из 
+этого состояния, но потребуется около 20-30 минут (сервер будет заружать в память датасеты размером около 1.5 Гб))
+
 ## Введение
 **Цель**: Построить рекомендательную систему, способную обрабатывать сценарии холодного старта и динамического добавления пользователей/фильмов.
-
+---
 ## Основные задачи
 1. **Холодный старт**: юзер выбирает жанр — выдаём top-5 по popularity.
 2. **Мало оценок**: несколько просмотренных фильмов — ищем похожие (жанры + теги + relevance).
@@ -10,13 +19,6 @@
 4. **Полноценные рекомендации**: >5 оценок — кластеризуем user-вектор.
 5. **Продвижение/блокировка**: система фильтрации на уровне выдачи.
 
-## 🧰 Используемые технологии
-- DVC, Airflow, MLflow
-- Scikit-learn (KMeans), Implicit ALS
-- Autoencoder, PyTorch (RatingPredictor)
-- Интерактивный макет выложен на:
-  (*Предупреждение, серввер уходит в спящий режим после 48 часовой неактивности. Любой запрос выведет его из 
-этого состояния, но потребуется около 20-30 минут (сервер будет заружать в память датасеты размером около 1.5 Гб))
 ---
 
 ## 🔹 Часть 1: Контент-базированная модель
@@ -104,6 +106,13 @@
 ---
 # 🌐 Project: Recommender System
 
+## 🧰 Technologies used
+- DVC, Airflow, MLflow
+- Scikit-learn (KMeans), Implicit ALS
+- Autoencoder, PyTorch (RatingPredictor)
+- Interactive mockup is available at https://huggingface.co/spaces/Saatarkin/Rec_sys:
+(*Warning, the server goes into sleep mode after 48 hours of inactivity. Any request will wake it up from this state, but it will take about 20-30 minutes (the server will load datasets of about 1.5 GB into memory))
+---
 ## Introduction
 **Goal**: Build a recommender system capable of handling cold start and dynamic user/movie addition scenarios.
 
@@ -114,12 +123,7 @@
 4. **Full recommendations**: >5 ratings — we cluster the user vector.
 5. **Promotion/blocking**: a filtering system at the search results level.
 
-## 🧰 Technologies used
-- DVC, Airflow, MLflow
-- Scikit-learn (KMeans), Implicit ALS
-- Autoencoder, PyTorch (RatingPredictor)
-- Interactive mockup is available at:
-(*Warning, the server goes into sleep mode after 48 hours of inactivity. Any request will wake it up from this state, but it will take about 20-30 minutes (the server will load datasets of about 1.5 GB into memory))
+
 ---
 
 ## 🔹 Part 1: Content-based model
