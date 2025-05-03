@@ -27,10 +27,6 @@ params_path = project_root / "params.yaml"
 with open(params_path, "r") as f:
     paths = get_project_paths()
 
-    download_if_missing(paths["raw_dir"] / "ratings.csv", "1TEPWCjeWpKTjgtt1EzZDCce_oE04Bany")
-    download_if_missing(paths["raw_dir"] / "movies.csv", "1EpFCaRuzs9jpT7PRRSBdj-PJk4vu7Nfp")
-    download_if_missing(paths["raw_dir"] / "genome-scores.csv", "1bAGauM6EFu_r9HJhAmrjkeCzPSh8Alxd")
-
 
 
 def get_top_movies(selected_genres: List):
@@ -1046,12 +1042,17 @@ def add_new_films(new_movie_title:str, selected_genres: List[str])-> DataFrame |
         config = yaml.safe_load(f)["autoencoder"]
         paths = get_project_paths()
 
-    # Загружаем данные
-    genome_scores = pd.read_csv(paths["raw_dir"] / "genome-scores.csv")
+
     movies = pd.read_csv(paths["raw_dir"] / "movies.csv")
 
-    # Строим матрицу тегов
-    movie_tag_matrix = genome_scores.pivot(index='movieId', columns='tagId', values='relevance').fillna(0)
+    data = np.load(paths["raw_dir"] /"movie_tag_matrix_small.npz")
+
+    matrix = data["matrix"]
+    movie_ids = data["movie_ids"]
+    tag_ids = data["tag_ids"]
+
+    movie_tag_matrix = pd.DataFrame(matrix, index=movie_ids, columns=tag_ids)
+
 
     # Находим похожий фильм по жанрам
     original_movie_vector = find_similar_movie_by_genres(movies, movie_tag_matrix, selected_genres)

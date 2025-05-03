@@ -3,7 +3,6 @@ FROM python:3.10-slim
 # Устанавливаем рабочую директорию
 WORKDIR /app
 
-RUN pip install torch==2.1.0+cpu --index-url https://download.pytorch.org/whl/cpu
 
 # Копируем зависимости
 COPY requirements.txt .
@@ -28,7 +27,7 @@ ENV MPLCONFIGDIR=/app/mpl_cache
 EXPOSE 8501
 
 # Проверка состояния
-#HEALTHCHECK CMD curl --fail http://localhost:8501/_stcore/health || exit 1
+HEALTHCHECK CMD curl --fail http://localhost:8501/_stcore/health || exit 1
 
 # Запуск S
-CMD streamlit run streamlit_app.py --server.port=10000
+CMD streamlit run streamlit_app.py --server.port=8501

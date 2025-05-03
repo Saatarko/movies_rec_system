@@ -1,11 +1,17 @@
 # 🌐 Проект: Рекомендательная система
-
+Оригиналы датасетов: https://www.kaggle.com/datasets/rounakbanik/the-movies-dataset
 
 ## 🧰 Используемые технологии
 - DVC, Airflow, MLflow
 - Scikit-learn (KMeans), Implicit ALS
 - Autoencoder, PyTorch (RatingPredictor)
-- Docker images: saatarko/rec:latest
+
+## 🧰 Внешнее источники
+Docker images: saatarko/rec:latest
+Готовый интерактив: https://huggingface.co/spaces/Saatarkin/rec   
+(Предупреждение - сервер может отключаться из-за неактивности, в этом случае первичный запуск может занять 5-10 минут. 
+К сожалению из-за ограничений хранилища датасет пользователей в демоцелях урезан, что может вызывать ошибки при запросах связанных с пользователями.
+Для минимизации ошибок при подборе по id пользователя использовать маленькие id)
 
 ## Запуск
 
@@ -110,13 +116,20 @@
 
 
 ---
-# 🌐 Project: Recommender System
+# 🌐 Project: Recommender system
+Original datasets: https://www.kaggle.com/datasets/rounakbanik/the-movies-dataset
 
 ## 🧰 Technologies used
 - DVC, Airflow, MLflow
 - Scikit-learn (KMeans), Implicit ALS
 - Autoencoder, PyTorch (RatingPredictor)
-- Docker images: saatarko/rec:latest
+
+## 🧰 External storage of the project
+Docker images: saatarko/rec:latest
+Ready interactive: https://huggingface.co/spaces/Saatarkin/rec
+(Warning - the server may be disconnected due to inactivity, in this case the initial launch may take 5-10 minutes.
+Unfortunately, due to storage limitations, the user dataset in demo targets is truncated, which can cause errors in user-related queries.
+To minimize errors when selecting by user ID, use small IDs)
 
 ---
 ## Introduction
