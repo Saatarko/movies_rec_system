@@ -5,9 +5,10 @@
 - DVC, Airflow, MLflow
 - Scikit-learn (KMeans), Implicit ALS
 - Autoencoder, PyTorch (RatingPredictor)
-- Интерактивный макет выложен на https://huggingface.co/spaces/Saatarkin/Rec_systems:
-  (*Предупреждение, серввер уходит в спящий режим после 48 часовой неактивности. Любой запрос выведет его из 
-этого состояния, но потребуется около 20-30 минут (сервер будет заружать в память датасеты размером около 1.5 Гб))
+- Docker images: saatarko/rec:latest
+- Интерактивный макет выложен на https://rec-67o4.onrender.com:
+  (*Предупреждение, сервер уходит в спящий режим после неактивности. Любой запрос выведет его из 
+этого состояния, но потребуется около 20-30 минут)
 
 ## Введение
 **Цель**: Построить рекомендательную систему, способную обрабатывать сценарии холодного старта и динамического добавления пользователей/фильмов.
@@ -110,7 +111,8 @@
 - DVC, Airflow, MLflow
 - Scikit-learn (KMeans), Implicit ALS
 - Autoencoder, PyTorch (RatingPredictor)
-- Interactive mockup is available at https://huggingface.co/spaces/Saatarkin/Rec_systems:
+- Docker images: saatarko/rec:latest
+- Interactive mockup is available at https://rec-67o4.onrender.com:
 (*Warning, the server goes into sleep mode after 48 hours of inactivity. Any request will wake it up from this state, but it will take about 20-30 minutes (the server will load datasets of about 1.5 GB into memory))
 ---
 ## Introduction
