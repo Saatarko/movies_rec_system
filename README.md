@@ -6,10 +6,15 @@
 - Scikit-learn (KMeans), Implicit ALS
 - Autoencoder, PyTorch (RatingPredictor)
 - Docker images: saatarko/rec:latest
-- Интерактивный макет выложен на https://rec-67o4.onrender.com:
-  (*Предупреждение, сервер уходит в спящий режим после неактивности. Любой запрос выведет его из 
-этого состояния, но потребуется около 20-30 минут)
 
+## Запуск
+
+- Скопировать проект на ПК.
+- Установить нужные библиотеки (pip install --no-cache-dir -r requirements.txt)
+- Запустить командой streamlit run streamlit_app.py
+
+- Загрузить себе в контейнер Docker images и запустить контейнер
+- 
 ## Введение
 **Цель**: Построить рекомендательную систему, способную обрабатывать сценарии холодного старта и динамического добавления пользователей/фильмов.
 ---
@@ -112,8 +117,7 @@
 - Scikit-learn (KMeans), Implicit ALS
 - Autoencoder, PyTorch (RatingPredictor)
 - Docker images: saatarko/rec:latest
-- Interactive mockup is available at https://rec-67o4.onrender.com:
-(*Warning, the server goes into sleep mode after 48 hours of inactivity. Any request will wake it up from this state, but it will take about 20-30 minutes (the server will load datasets of about 1.5 GB into memory))
+
 ---
 ## Introduction
 **Goal**: Build a recommender system capable of handling cold start and dynamic user/movie addition scenarios.
