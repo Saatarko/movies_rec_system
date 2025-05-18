@@ -180,3 +180,4 @@ dvc/
 mlartifacts/
 *.db
 models/
+.dvc/

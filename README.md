@@ -1,28 +1,39 @@
 # 🌐 Проект: Рекомендательная система
 Оригиналы датасетов: https://www.kaggle.com/datasets/rounakbanik/the-movies-dataset
 
+---
+
+# Запуск рекомендательной системы
+
+## Вариант 1. Запуск готового интерактива (урезанный функционал)
+Предупреждение - сервер может отключаться из-за неактивности, в этом случае первичный запуск может занять 5-10 минут. 
+Так же из-за ограничений хранилища датасет пользователей в демоцелях урезан, что может вызывать ошибки при запросах связанных с пользователями.
+Для минимизации ошибок при подборе по id пользователя использовать маленькие id
+
+Готовый интерактив: https://huggingface.co/spaces/Saatarkin/rec   
+
+
+## Вариант 2. Локальный запуск
+
+### 2.1 Установка с git
+- Скачать проект
+- Скачать готовые вектора, модели и сами датасеты (нужны если проект качается с GIT https://huggingface.co/datasets/Saatarkin/movies/blob/main/movies_rec_system.tar.gz)
+- Установить нужные библиотеки (pip install --no-cache-dir -r requirements.txt)
+- Запустить командой streamlit run streamlit_app.py
+
+### 2.2 Docker image
+- Скачать Docker images: saatarko/rec:latest (образ очень большой, проборос моста будет не очень целесообразным)
+- Загрузить себе в контейнер Docker images и запустить контейнер
+
+---
+
 ## 🧰 Используемые технологии
 - DVC, Airflow, MLflow
 - Scikit-learn (KMeans), Implicit ALS
 - Autoencoder, PyTorch (RatingPredictor)
 
-## 🧰 Внешнее источники
+---
 
-Docker images: saatarko/rec:latest
-Готовые вектора и модели (нужны если проект качается с GIT https://huggingface.co/datasets/Saatarkin/movies/blob/main/movies_rec_system.tar.gz)
-Готовый интерактив: https://huggingface.co/spaces/Saatarkin/rec   
-(Предупреждение - сервер может отключаться из-за неактивности, в этом случае первичный запуск может занять 5-10 минут. 
-К сожалению из-за ограничений хранилища датасет пользователей в демоцелях урезан, что может вызывать ошибки при запросах связанных с пользователями.
-Для минимизации ошибок при подборе по id пользователя использовать маленькие id)
-
-## Запуск
-
-- Скопировать проект на ПК. Скопировать и  распаковать данные по векторам и моделям (ссылка выше)
-- Установить нужные библиотеки (pip install --no-cache-dir -r requirements.txt)
-- Запустить командой streamlit run streamlit_app.py
-
-- Загрузить себе в контейнер Docker images и запустить контейнер
-- 
 ## Введение
 **Цель**: Построить рекомендательную систему, способную обрабатывать сценарии холодного старта и динамического добавления пользователей/фильмов.
 ---
@@ -121,37 +132,56 @@ Docker images: saatarko/rec:latest
 # 🌐 Project: Recommender system
 Original datasets: https://www.kaggle.com/datasets/rounakbanik/the-movies-dataset
 
+---
+
+# Launching the recommender system
+
+## Option 1. Launching a ready-made interactive (reduced functionality)
+Warning - the server may shut down due to inactivity, in which case the initial launch may take 5-10 minutes.
+
+Also, due to storage limitations, the user dataset in demo targets is truncated, which may cause errors in user-related queries.
+To minimize errors when selecting by user ID, use small IDs
+
+Ready-made interactive: https://huggingface.co/spaces/Saatarkin/rec
+
+## Option 2. Local launch
+
+### 2.1 Installation from git
+- Download the project
+- Download ready-made vectors, models and the datasets themselves (needed if the project is downloaded from GIT https://huggingface.co/datasets/Saatarkin/movies/blob/main/movies_rec_system.tar.gz)
+- Install the necessary libraries (pip install --no-cache-dir -r requirements.txt)
+- Run with the command streamlit run streamlit_app.py
+
+### 2.2 Docker image
+- Download Docker images: saatarko/rec:latest (the image is very large, breaking the bridge will not be very practical)
+- Upload Docker images to your container and run the container
+
+---
+
 ## 🧰 Technologies used
 - DVC, Airflow, MLflow
 - Scikit-learn (KMeans), Implicit ALS
 - Autoencoder, PyTorch (RatingPredictor)
 
-## 🧰 External storage of the project
-Docker images: saatarko/rec:latest
-Ready interactive: https://huggingface.co/spaces/Saatarkin/rec
-(Warning - the server may be disconnected due to inactivity, in this case the initial launch may take 5-10 minutes.
-Unfortunately, due to storage limitations, the user dataset in demo targets is truncated, which can cause errors in user-related queries.
-To minimize errors when selecting by user ID, use small IDs)
-
 ---
+
 ## Introduction
-**Goal**: Build a recommender system capable of handling cold start and dynamic user/movie addition scenarios.
-
+**Goal**: Build a recommender system that can handle cold start and dynamic user/movie addition scenarios.
+---
 ## Main tasks
-1. **Cold start**: user selects a genre — we return top-5 by popularity.
-2. **Few ratings**: several viewed films — we search for similar ones (genres + tags + relevance).
+1. **Cold start**: user selects a genre — output top-5 by popularity.
+2. **Few ratings**: several watched movies — search for similar ones (genres + tags + relevance).
 3. **Few ratings**: <5 ratings, or >5, but <3 positive.
-4. **Full recommendations**: >5 ratings — we cluster the user vector.
-5. **Promotion/blocking**: a filtering system at the search results level.
-
+4. **Full recommendations**: >5 ratings — cluster the user vector.
+5. **Promotion/blocking**: filtering system at the search results level.
 
 ---
 
 ## 🔹 Part 1: Content-based model
 
-1. Calculating the average popularity of movies.
+1. Calculating average popularity of movies.
 2. Creating `movies_vector`:
-- Normalization of features (saving `scaler`)
+- Feature normalization (saving `scaler`)
 - Dimensionality reduction (`encoder`)
 - Clustering (KMeans)
 3. Implementing a cluster-based recommendation function.
@@ -162,26 +192,26 @@ To minimize errors when selecting by user ID, use small IDs)
 
 ## 🔸 Part 2: Hybrid (ALS + Content)
 
-6. Forming the interaction matrix.
+6. Forming an interaction matrix.
 7. Training Implicit ALS → `item_factors`.
 8. Filtering by movies with tags.
-9. Combining `item_factors` + `movies_vector`.
-10. Dimensionality reduction + clustering (KMeans). Implementing a cluster-based recommendation function
+9. Merging `item_factors` + `movies_vector`.
+10. Dimensionality reduction + clustering (KMeans). Implementation of cluster-based recommendation function
 11. Offline testing.
-12. Dynamically adding a movie:
+12. Dynamically adding movie:
 - Adding to datasets.
 - Vector construction.
-- Processing scaler → encoder → KMeans.
+- Scaler → encoder → KMeans processing.
 
 ---
 
-## 🔹 Part 3: User Model
+## 🔹 Part 3: User model
 
-13. Interaction Matrix Dimensionality Reduction.
-14. User Clustering (KMeans). Implementing a Cluster-Based Recommendation Function
-15. Dynamic User Addition:
-- Adding Ratings.
-- Processing encoder → KMeans.
+13. Interaction matrix dimensionality reduction.
+14. User clustering (KMeans). Implementation of cluster-based recommendation function
+15. Dynamically adding user:
+- Adding ratings.
+- Encoder → KMeans processing.
 
 ---
 
@@ -204,6 +234,7 @@ To minimize errors when selecting by user ID, use small IDs)
 19. Model recommendation function:
 - Using embeddings + neural networks for personalized results.
 
+---
 ## 🔸 Part 5: Supervised clustering (segmentation)
 
 20. Preparation:
@@ -212,15 +243,15 @@ To minimize errors when selecting by user ID, use small IDs)
 - Genres (One-Hot or Multi-Hot Encoding) and Average rating
 
 ✅ Segmentation by users:
-- Take only ratings > 3.5 (appropriate - this is a positive attitude)
-- Create a profile for each user: preferences by genre, average ratings by movie clusters, rating density by movie types
+- We take only ratings > 3.5 (appropriate - this is a positive attitude)
+- For each user, we create a profile: preferences by genres, average ratings by movie clusters, rating density by movie types
 
 21. Dimensionality reduction:
 - `user_segment_autoencoder` (autoencoder)
 - `encoded_user_vectors.npz`
 
 22. Clustering:
-- Calculate the required number of clusters using different methods
+- Calculation of the required number of clusters using different methods
 - Logging in MLflow
 
 19. Recommendation function:
