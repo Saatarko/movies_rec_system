@@ -1,34 +1,38 @@
 import argparse
+import json
+import os
+import sys
 import time
 from pathlib import Path
 from typing import Optional
 
-from scipy.sparse import load_npz, save_npz, csr_matrix
-from sklearn.model_selection import train_test_split
-from torch.utils.data import Dataset
 import joblib
-import pandas as pd
-import torch
+import lightgbm as lgb
+import matplotlib.pyplot as plt
 import mlflow
 import mlflow.pytorch
-import yaml
-from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
-import matplotlib.pyplot as plt
-from torch import nn, optim
-from torch.utils.data import DataLoader, random_split
-import sys, os
 import numpy as np
+import pandas as pd
+import torch
+import yaml
+from scipy.sparse import csr_matrix, load_npz, save_npz
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from sklearn.model_selection import train_test_split
+from torch import nn, optim
+from torch.utils.data import DataLoader, Dataset, random_split
 from tqdm import tqdm
-import lightgbm as lgb
 
-import json
-
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 mlflow.set_tracking_uri("http://localhost:5000")
 
-from scripts.task_registry import task, main
+from scripts.task_registry import main, task
 from scripts.utils import load_vectors_npz, log_training_metrics, save_model_metrics
+
+
 def get_project_paths():
+    """
+    Function to get paths for different data
+    """
     PROJECT_ROOT = Path(__file__).resolve().parent.parent
     with open(PROJECT_ROOT / "params.yaml") as f:
         config = yaml.safe_load(f)
@@ -39,40 +43,40 @@ def get_project_paths():
         "raw_dir": PROJECT_ROOT / paths["raw_data_dir"],
         "processed_dir": PROJECT_ROOT / paths["processed_data_dir"],
         "models_dir": PROJECT_ROOT / paths["models_dir"],
-        "scripts_dir": PROJECT_ROOT / paths["scripts"]
+        "scripts_dir": PROJECT_ROOT / paths["scripts"],
     }
 
 
-def plot_losses(train_losses, val_losses)->str:
+def plot_losses(train_losses, val_losses) -> str:
     """
-    Функция готовит графики для сохранения/передачи в mlflow
+    The function prepares graphs for saving/transferring to mlflow
     :param train_losses:
     :param val_losses:
-    :return: Путь к изображению
+    :return: Path to the image
     """
 
     plt.figure(figsize=(10, 5))
-    plt.plot(train_losses, label='Train Loss')
-    plt.plot(val_losses, label='Validation Loss')
-    plt.xlabel('Epoch')
-    plt.ylabel('Loss')
-    plt.title('Training and Validation Loss')
+    plt.plot(train_losses, label="Train Loss")
+    plt.plot(val_losses, label="Validation Loss")
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.title("Training and Validation Loss")
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
 
-
-    plot_path =  "models/training_loss_curve.png"
+    plot_path = "models/training_loss_curve.png"
     plt.savefig(plot_path)
     plt.close()
 
-    return plot_path  # Возвращаем путь к сохранённому файлу
+    return plot_path  # Return the path to the saved file
 
 
 class MovieAutoencoder(nn.Module):
     """
-    Модель автоенкодера для контентного вектора
+    Autoencoder model for content vector
     """
+
     def __init__(self, input_dim, encoding_dim):
         super().__init__()
         self.encoder = nn.Sequential(
@@ -81,7 +85,7 @@ class MovieAutoencoder(nn.Module):
             nn.Linear(512, 256),
             nn.ReLU(),
             nn.Linear(256, encoding_dim),
-            nn.ReLU()
+            nn.ReLU(),
         )
         self.decoder = nn.Sequential(
             nn.Linear(encoding_dim, 256),
@@ -89,16 +93,17 @@ class MovieAutoencoder(nn.Module):
             nn.Linear(256, 512),
             nn.ReLU(),
             nn.Linear(512, input_dim),
-            nn.Sigmoid()
+            nn.Sigmoid(),
         )
 
     def forward(self, x):
         z = self.encoder(x)
         return self.decoder(z)
 
+
 class SparseRowDataset(Dataset):
     """
-        Датасет автоенкодера для контентного вектора
+    Autoencoder dataset for content vector
     """
 
     def __init__(self, sparse_matrix):
@@ -111,24 +116,23 @@ class SparseRowDataset(Dataset):
         row = self.matrix.getrow(idx).toarray().squeeze()
         return torch.tensor(row, dtype=torch.float32)
 
-# Модель
+
+# Model
 class Autoencoder(nn.Module):
     """
-        Модель автоенкодера для пользовательского вектора
+    Autoencoder model for user vector
     """
 
     def __init__(self, input_dim, encoding_dim=64):
         super().__init__()
         self.encoder = nn.Sequential(
-            nn.Linear(input_dim, 512),
-            nn.ReLU(),
-            nn.Linear(512, encoding_dim)
+            nn.Linear(input_dim, 512), nn.ReLU(), nn.Linear(512, encoding_dim)
         )
         self.decoder = nn.Sequential(
             nn.Linear(encoding_dim, 512),
             nn.ReLU(),
             nn.Linear(512, input_dim),
-            nn.Sigmoid()
+            nn.Sigmoid(),
         )
 
     def forward(self, x):
@@ -136,12 +140,12 @@ class Autoencoder(nn.Module):
         out = self.decoder(z)
         return out
 
+
 @task("data:movie_autoencoder")
 def content_vector_autoencoder():
-
     """
-    Функция обучения автоенкодера
-    возвращает сохраенную модель
+    Autoencoder training function
+    returns the saved model
     """
     with open("params.yaml", "r") as f:
         config = yaml.safe_load(f)["autoencoder"]
@@ -152,8 +156,9 @@ def content_vector_autoencoder():
     lr = config["learning_rate"]
     model_path = config["model_output_path"]
 
-    movie_vectors_scaled_train = np.load(paths["processed_dir"] / "movie_vectors_scaled_train.npy")
-
+    movie_vectors_scaled_train = np.load(
+        paths["processed_dir"] / "movie_vectors_scaled_train.npy"
+    )
 
     input_dim = movie_vectors_scaled_train.shape[1]
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -169,7 +174,7 @@ def content_vector_autoencoder():
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size)
 
-    best_val_loss = float("inf")  # Инициализация лучшей валидационной потери
+    best_val_loss = float("inf")  # Initialization of the best validation loss
     best_model_state = None
 
     epoch_train_losses = []
@@ -205,34 +210,36 @@ def content_vector_autoencoder():
             epoch_train_losses.append(avg_train)
             epoch_val_losses.append(avg_val)
 
-            # Логируем метрики для каждой эпохи
+            # Logging metrics for each era
             mlflow.log_metric("train_loss", avg_train, step=epoch)
             mlflow.log_metric("val_loss", avg_val, step=epoch)
 
-            # Сохраняем модель, если она лучшая по валидационной потере
+            # We save the model if it is the best in validation loss
             if avg_val < best_val_loss:
                 best_val_loss = avg_val
                 best_model_state = model.state_dict()
 
-            print(f"Epoch [{epoch+1}/{num_epochs}] Train Loss: {avg_train:.4f} | Val Loss: {avg_val:.4f}")
+            print(
+                f"Epoch [{epoch+1}/{num_epochs}] Train Loss: {avg_train:.4f} | Val Loss: {avg_val:.4f}"
+            )
 
-        # Сохраняем лучшую модель
+        # We keep the best model
         os.makedirs(os.path.dirname(model_path), exist_ok=True)
         torch.save(best_model_state, model_path)
         mlflow.pytorch.log_model(model, "model")
 
-        # Логируем график потерь
+        # Logging the loss schedule
         plot_path = plot_losses(epoch_train_losses, epoch_val_losses)
-        mlflow.log_artifact(str(plot_path))  # Преобразуем в строку для mlflow
+        mlflow.log_artifact(str(plot_path))  # We convert into a line for mlflow
 
         train_metrics = {
             "best_val_loss": best_val_loss,
             "final_train_loss": epoch_train_losses[-1],
             "final_val_loss": epoch_val_losses[-1],
-            "num_epochs": num_epochs
+            "num_epochs": num_epochs,
         }
 
-        # Сохраняем метрики в файл для DVC
+        # Save metrics to the DVC file
         metrics_path = "models/train_metrics.json"
         os.makedirs(os.path.dirname(metrics_path), exist_ok=True)
         with open(metrics_path, "w") as f:
@@ -244,10 +251,9 @@ def content_vector_autoencoder():
 @task("data:movie_autoencoder_raw")
 def content_vector_autoencoder_raw():
     """
-       Функция обучения автоенкодера для полного вектора
-       Возвращает сохраенную модель
+    Autoencoder training function for full vector
+    Returns the saved model
     """
-
 
     with open("params.yaml", "r") as f:
         config = yaml.safe_load(f)["autoencoder"]
@@ -258,8 +264,9 @@ def content_vector_autoencoder_raw():
     lr = config["learning_rate"]
     model_path = config["model_output_path_raw"]
 
-    movie_vectors_scaled_full = np.load(paths["processed_dir"] / "movie_vectors_scaled_full.npy")
-
+    movie_vectors_scaled_full = np.load(
+        paths["processed_dir"] / "movie_vectors_scaled_full.npy"
+    )
 
     input_dim = movie_vectors_scaled_full.shape[1]
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -275,7 +282,7 @@ def content_vector_autoencoder_raw():
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size)
 
-    best_val_loss = float("inf")  # Инициализация лучшей валидационной потери
+    best_val_loss = float("inf")  # Initialization of the best validation loss
     best_model_state = None
 
     epoch_train_losses = []
@@ -311,34 +318,36 @@ def content_vector_autoencoder_raw():
             epoch_train_losses.append(avg_train)
             epoch_val_losses.append(avg_val)
 
-            # Логируем метрики для каждой эпохи
+            # Logging metrics for each era
             mlflow.log_metric("train_loss", avg_train, step=epoch)
             mlflow.log_metric("val_loss", avg_val, step=epoch)
 
-            # Сохраняем модель, если она лучшая по валидационной потере
+            # We save the model if it is the best in validation loss
             if avg_val < best_val_loss:
                 best_val_loss = avg_val
                 best_model_state = model.state_dict()
 
-            print(f"Epoch [{epoch+1}/{num_epochs}] Train Loss: {avg_train:.4f} | Val Loss: {avg_val:.4f}")
+            print(
+                f"Epoch [{epoch+1}/{num_epochs}] Train Loss: {avg_train:.4f} | Val Loss: {avg_val:.4f}"
+            )
 
-        # Сохраняем лучшую модель
+        # We keep the best model
         os.makedirs(os.path.dirname(model_path), exist_ok=True)
         torch.save(best_model_state, model_path)
         mlflow.pytorch.log_model(model, "model_raw")
 
-        # Логируем график потерь
+        # Logging the loss schedule
         plot_path = plot_losses(epoch_train_losses, epoch_val_losses)
-        mlflow.log_artifact(str(plot_path))  # Преобразуем в строку для mlflow
+        mlflow.log_artifact(str(plot_path))  # We convert into a line for mlflow
 
         train_metrics = {
             "best_val_loss_raw": best_val_loss,
             "final_train_loss_raw": epoch_train_losses[-1],
             "final_val_loss_raw": epoch_val_losses[-1],
-            "num_epochs_raw": num_epochs
+            "num_epochs_raw": num_epochs,
         }
 
-        # Сохраняем метрики в файл для DVC
+        # Save metrics to the DVC file
         metrics_path = "models/metrics_raw.json"
         os.makedirs(os.path.dirname(metrics_path), exist_ok=True)
         with open(metrics_path, "w") as f:
@@ -347,15 +356,14 @@ def content_vector_autoencoder_raw():
     return best_model_state
 
 
-
 @task("data:user_autoencoder")
 def user_vector_autoencoder():
     """
-           Функция обучения автоенкодера для пользовательского вектора
-           Возвращает сохраенную модель
+    Autoencoder training function for a user-defined vector
+    Returns the saved model
     """
 
-    # Загрузка параметров
+    # Loading parameters
     with open("params.yaml", "r") as f:
         config = yaml.safe_load(f)["user_autoencoder"]
     paths = get_project_paths()
@@ -365,20 +373,20 @@ def user_vector_autoencoder():
     num_epochs = config["num_epochs"]
     lr = config["learning_rate"]
 
-    # Загрузка CSR матрицы
+    # Download CSR matrix
     ratings_csr = load_npz(paths["processed_dir"] / "ratings_csr.npz")
 
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     input_dim = ratings_csr.shape[1]
 
-    # DataLoader
+    # DATALOADER
     dataset = SparseRowDataset(ratings_csr)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=0)
 
-    # Модель
+    # Model
     model = Autoencoder(input_dim=input_dim, encoding_dim=encoding_dim).to(device)
     optimizer = optim.Adam(model.parameters(), lr=lr)
-    criterion = nn.MSELoss()
+    nn.MSELoss()
 
     epoch_train_losses = []
 
@@ -390,11 +398,13 @@ def user_vector_autoencoder():
             total_loss = 0
             start_epoch = time.time()
 
-            for i, batch in enumerate(tqdm(dataloader, desc=f"Epoch {epoch + 1}/{num_epochs}")):
+            for i, batch in enumerate(
+                tqdm(dataloader, desc=f"Epoch {epoch + 1}/{num_epochs}")
+            ):
                 batch = batch.to(device)
 
                 output = model(batch)
-                # Модифицированная MSE для учета только ненулевых значений
+                # Modified MSE for accounting only non -equal values
                 mask = batch != 0
                 loss = ((output - batch) ** 2 * mask).sum() / mask.sum()
 
@@ -408,31 +418,35 @@ def user_vector_autoencoder():
 
             avg_loss = total_loss / len(dataloader)
             epoch_train_losses.append(avg_loss)
-            print(f"Epoch {epoch + 1} завершён за {time.time() - start_epoch:.1f} сек. Средний loss: {avg_loss:.4f}")
+            print(
+                f"Epoch {epoch + 1} завершён за {time.time() - start_epoch:.1f} сек. Средний loss: {avg_loss:.4f}"
+            )
 
-        # Сохраняем модель корректно
-        torch.save(model.state_dict(), paths["models_dir"] / "user_autoencoder_model.pt")
+        # We save the model correctly
+        torch.save(
+            model.state_dict(), paths["models_dir"] / "user_autoencoder_model.pt"
+        )
         mlflow.pytorch.log_model(model, "model")
 
-        # Логирование графика
+        # Logging of the graph
         plot_path = plot_losses(epoch_train_losses, [])
         mlflow.log_artifact(str(plot_path))
 
-        # Метрики для DVC
+        # Metrics for DVC
         train_metrics = {
             "final_train_loss": epoch_train_losses[-1],
-            "num_epochs": num_epochs
+            "num_epochs": num_epochs,
         }
         metrics_path = paths["models_dir"] / "user_metrics.json"
         with open(metrics_path, "w") as f:
             json.dump(train_metrics, f, indent=4)
 
 
-
 class RatingPredictor(nn.Module):
     """
-    Модель нейросети для предикта рекомендаций
+    Neural network model for recommendation prediction
     """
+
     def __init__(self, vector_dim, hidden_dim=128):
         super().__init__()
         self.net = nn.Sequential(
@@ -440,7 +454,7 @@ class RatingPredictor(nn.Module):
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim // 2),
             nn.ReLU(),
-            nn.Linear(hidden_dim // 2, 1)
+            nn.Linear(hidden_dim // 2, 1),
         )
 
     def forward(self, user_vec, item_vec):
@@ -453,15 +467,17 @@ class UserItemRatingDataset(Dataset):
         self.ratings = ratings_df.reset_index(drop=True)
         self.user_vectors = torch.tensor(user_vectors, dtype=torch.float32)
         self.item_vectors = torch.tensor(item_vectors, dtype=torch.float32)
-        self.ratings_tensor = torch.tensor(self.ratings['rating'].values, dtype=torch.float32)
+        self.ratings_tensor = torch.tensor(
+            self.ratings["rating"].values, dtype=torch.float32
+        )
 
     def __len__(self):
         return len(self.ratings)
 
     def __getitem__(self, idx):
         row = self.ratings.iloc[idx]
-        user_idx = int(row['user_idx'])
-        item_idx = int(row['item_idx'])
+        user_idx = int(row["user_idx"])
+        item_idx = int(row["item_idx"])
 
         user_vec = self.user_vectors[user_idx]
         item_vec = self.item_vectors[item_idx]
@@ -469,15 +485,16 @@ class UserItemRatingDataset(Dataset):
 
         return user_vec, item_vec, rating
 
+
 def root_mean_squared_error(y_true, y_pred):
     return mean_squared_error(y_true, y_pred) ** 0.5
 
+
 @task("data:train_recommender")
 def train_recommender_nn():
-
     """
-    Функция обучения нейросети
-    Возвращает сохраенную модель
+    Neural network training function
+    Returns the saved model
     """
     paths = get_project_paths()
     config_path = Path("params.yaml")
@@ -494,10 +511,12 @@ def train_recommender_nn():
     best_model_path = paths["models_dir"] / "neural_model_best.pt"
     metrics_path = paths["models_dir"] / "neural_model_metrics.json"
 
-    # Загрузка данных
+    # Data load
     ratings = pd.read_csv(paths["raw_dir"] / "ratings.csv")
     user_vectors = load_vectors_npz(paths["models_dir"] / "user_content_vector.npz")
-    item_vectors = load_vectors_npz(paths["models_dir"] / "model_movies_full_vectors_raw.npz")
+    item_vectors = load_vectors_npz(
+        paths["models_dir"] / "model_movies_full_vectors_raw.npz"
+    )
 
     user_encoder = joblib.load(paths["processed_dir"] / "user_encoder.pkl")
     item_encoder = joblib.load(paths["processed_dir"] / "item_encoder.pkl")
@@ -505,14 +524,22 @@ def train_recommender_nn():
     valid_movie_idxs = np.arange(item_vectors.shape[0])
     valid_movie_ids = item_encoder.inverse_transform(valid_movie_idxs)
 
-    filtered_ratings = ratings[ratings['movieId'].isin(valid_movie_ids)].copy()
-    filtered_ratings['user_idx'] = user_encoder.transform(filtered_ratings['userId']).astype(int)
-    filtered_ratings['item_idx'] = item_encoder.transform(filtered_ratings['movieId']).astype(int)
+    filtered_ratings = ratings[ratings["movieId"].isin(valid_movie_ids)].copy()
+    filtered_ratings["user_idx"] = user_encoder.transform(
+        filtered_ratings["userId"]
+    ).astype(int)
+    filtered_ratings["item_idx"] = item_encoder.transform(
+        filtered_ratings["movieId"]
+    ).astype(int)
 
-    train_df, val_df = train_test_split(filtered_ratings, test_size=0.1, random_state=42)
+    train_df, val_df = train_test_split(
+        filtered_ratings, test_size=0.1, random_state=42
+    )
     max_user_idx = len(user_vectors) - 1
     max_item_idx = len(item_vectors) - 1
-    val_df = val_df[(val_df['user_idx'] <= max_user_idx) & (val_df['item_idx'] <= max_item_idx)]
+    val_df = val_df[
+        (val_df["user_idx"] <= max_user_idx) & (val_df["item_idx"] <= max_item_idx)
+    ]
 
     if val_df.empty:
         raise ValueError("Validation set is empty after filtering.")
@@ -520,11 +547,17 @@ def train_recommender_nn():
     train_dataset = UserItemRatingDataset(train_df, user_vectors, item_vectors)
     val_dataset = UserItemRatingDataset(val_df, user_vectors, item_vectors)
 
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset, batch_size=batch_size, shuffle=True
+    )
+    val_loader = torch.utils.data.DataLoader(
+        val_dataset, batch_size=batch_size, shuffle=False
+    )
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = RatingPredictor(vector_dim=user_vectors.shape[1], hidden_dim=hidden_dim).to(device)
+    model = RatingPredictor(vector_dim=user_vectors.shape[1], hidden_dim=hidden_dim).to(
+        device
+    )
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     criterion = torch.nn.MSELoss()
 
@@ -533,22 +566,30 @@ def train_recommender_nn():
     train_losses, val_rmses = [], []
 
     with mlflow.start_run():
-        mlflow.log_params({
-            "batch_size": batch_size,
-            "num_epochs": num_epochs,
-            "learning_rate": lr,
-            "patience": patience,
-            "hidden_dim": hidden_dim
-        })
+        mlflow.log_params(
+            {
+                "batch_size": batch_size,
+                "num_epochs": num_epochs,
+                "learning_rate": lr,
+                "patience": patience,
+                "hidden_dim": hidden_dim,
+            }
+        )
 
         for epoch in range(num_epochs):
             tqdm.write(f"\n🔁 [Epoch {epoch + 1}/{num_epochs}] — обучение начато")
             model.train()
             total_loss = 0
-            progress_bar = tqdm(train_loader, desc=f"🔄 Тренировка (эпоха {epoch + 1})", leave=False)
+            progress_bar = tqdm(
+                train_loader, desc=f"🔄 Тренировка (эпоха {epoch + 1})", leave=False
+            )
 
             for user_vec, item_vec, rating in progress_bar:
-                user_vec, item_vec, rating = user_vec.to(device), item_vec.to(device), rating.to(device).unsqueeze(1)
+                user_vec, item_vec, rating = (
+                    user_vec.to(device),
+                    item_vec.to(device),
+                    rating.to(device).unsqueeze(1),
+                )
                 optimizer.zero_grad()
                 output = model(user_vec, item_vec)
                 loss = criterion(output, rating)
@@ -559,13 +600,16 @@ def train_recommender_nn():
             avg_loss = total_loss / len(train_loader)
             train_losses.append(avg_loss)
 
-            # Валидация
+            # Validation
             model.eval()
             val_preds, val_targets = [], []
             with torch.no_grad():
                 for user_vec, item_vec, rating in val_loader:
-                    user_vec, item_vec, rating = user_vec.to(device), item_vec.to(device), rating.to(device).unsqueeze(
-                        1)
+                    user_vec, item_vec, rating = (
+                        user_vec.to(device),
+                        item_vec.to(device),
+                        rating.to(device).unsqueeze(1),
+                    )
                     output = model(user_vec, item_vec)
                     val_preds.append(output.cpu().numpy())
                     val_targets.append(rating.cpu().numpy())
@@ -575,7 +619,9 @@ def train_recommender_nn():
             rmse = root_mean_squared_error(val_targets, val_preds)
             val_rmses.append(rmse)
 
-            tqdm.write(f"📊 Epoch {epoch + 1}: train_loss = {avg_loss:.4f}, val_rmse = {rmse:.4f}")
+            tqdm.write(
+                f"📊 Epoch {epoch + 1}: train_loss = {avg_loss:.4f}, val_rmse = {rmse:.4f}"
+            )
             mlflow.log_metric("train_loss", avg_loss, step=epoch)
             mlflow.log_metric("val_rmse", rmse, step=epoch)
 
@@ -586,7 +632,9 @@ def train_recommender_nn():
                 tqdm.write(f"✅ Модель сохранена (лучший RMSE: {best_rmse:.4f})")
             else:
                 epochs_without_improvement += 1
-                tqdm.write(f"⚠️ Без улучшения RMSE ({epochs_without_improvement}/{patience})")
+                tqdm.write(
+                    f"⚠️ Без улучшения RMSE ({epochs_without_improvement}/{patience})"
+                )
                 if epochs_without_improvement >= patience:
                     tqdm.write("⏹️ Ранняя остановка обучения.")
                     break
@@ -599,7 +647,7 @@ def train_recommender_nn():
 @task("data:movie_eval_vector")
 def eval_content_train_test_vectors():
     """
-        Функция кодирования контентного вектора
+    Content vector encoding function
     """
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -609,56 +657,84 @@ def eval_content_train_test_vectors():
 
     model_path = config["model_output_path"]
 
-    movie_vectors_scaled_train = np.load(paths["processed_dir"] / "movie_vectors_scaled_train.npy")
-    movie_vectors_scaled_test = np.load(paths["processed_dir"] / "movie_vectors_scaled_test.npy")
+    movie_vectors_scaled_train = np.load(
+        paths["processed_dir"] / "movie_vectors_scaled_train.npy"
+    )
+    movie_vectors_scaled_test = np.load(
+        paths["processed_dir"] / "movie_vectors_scaled_test.npy"
+    )
 
     input_dim = movie_vectors_scaled_train.shape[1]
 
-    # Загружаем обученную модель
+    # We load the trained model
     model = MovieAutoencoder(input_dim=input_dim, encoding_dim=64).to(device)
     model.load_state_dict(torch.load(model_path))
     model.eval()
 
     with torch.no_grad():
-        # Восстановленные вектора (full pipeline: encoder -> decoder)
-        train_recon = model(torch.tensor(movie_vectors_scaled_train, dtype=torch.float32).to(device)).cpu().numpy()
-        test_recon = model(torch.tensor(movie_vectors_scaled_test, dtype=torch.float32).to(device)).cpu().numpy()
+        # Restored vectors (Full Pipeline: Encoder -> Decoder)
+        train_recon = (
+            model(
+                torch.tensor(movie_vectors_scaled_train, dtype=torch.float32).to(device)
+            )
+            .cpu()
+            .numpy()
+        )
+        test_recon = (
+            model(
+                torch.tensor(movie_vectors_scaled_test, dtype=torch.float32).to(device)
+            )
+            .cpu()
+            .numpy()
+        )
 
-        # Вектора для content-based фильтрации (encoder output)
-        movie_content_vectors_train = model.encoder(
-            torch.tensor(movie_vectors_scaled_train, dtype=torch.float32).to(device)).cpu().numpy()
-        movie_content_vectors_test = model.encoder(
-            torch.tensor(movie_vectors_scaled_test, dtype=torch.float32).to(device)).cpu().numpy()
+        # Vector for Content-BASED filtration (Encoder output)
+        movie_content_vectors_train = (
+            model.encoder(
+                torch.tensor(movie_vectors_scaled_train, dtype=torch.float32).to(device)
+            )
+            .cpu()
+            .numpy()
+        )
+        movie_content_vectors_test = (
+            model.encoder(
+                torch.tensor(movie_vectors_scaled_test, dtype=torch.float32).to(device)
+            )
+            .cpu()
+            .numpy()
+        )
 
-    # Считаем метрики восстановления
+    # We count the metrics of recovery
     train_mse = mean_squared_error(movie_vectors_scaled_train, train_recon)
     test_mse = mean_squared_error(movie_vectors_scaled_test, test_recon)
 
-    eval_metrics = {
-        "train_mse": train_mse,
-        "test_mse": test_mse
-    }
+    eval_metrics = {"train_mse": train_mse, "test_mse": test_mse}
 
-    # Сохраняем метрики для DVC
+    # We save metrics for DVC
     os.makedirs("models", exist_ok=True)
     with open("models/eval_metrics.json", "w") as f:
         json.dump(eval_metrics, f, indent=4)
 
-    # Сохраняем content вектора для фильтрации
-    np.savez_compressed("models/movie_content_vectors_train.npz", vectors=movie_content_vectors_train)
-    np.savez_compressed("models/movie_content_vectors_test.npz", vectors=movie_content_vectors_test)
+    # We save the Content vector for filtering
+    np.savez_compressed(
+        "models/movie_content_vectors_train.npz", vectors=movie_content_vectors_train
+    )
+    np.savez_compressed(
+        "models/movie_content_vectors_test.npz", vectors=movie_content_vectors_test
+    )
 
     print("Модель оценена!")
     print(f"Train MSE: {train_mse:.6f}")
     print(f"Test MSE: {test_mse:.6f}")
-    print("Вектора сохранены в 'models/movie_content_vectors_train.npz' и 'models/movie_content_vectors_test.npz'")
+    print(
+        "Вектора сохранены в 'models/movie_content_vectors_train.npz' и 'models/movie_content_vectors_test.npz'"
+    )
 
 
 @task("data:eval_user_vectors")
 def eval_user_vectors():
-
     """
-     Функция кодирования пользовательского вектора
+    User defined vector encoding function
     """
 
     with open("params.yaml", "r") as f:
@@ -669,14 +745,16 @@ def eval_user_vectors():
     batch_size = config["batch_size"]
     ratings_csr = load_npz(paths["processed_dir"] / "ratings_csr.npz")
 
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     input_dim = ratings_csr.shape[1]
 
     dataset = SparseRowDataset(ratings_csr)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=0)
+    dataloader = DataLoader(
+        dataset, batch_size=batch_size, shuffle=False, num_workers=0
+    )
 
     model = Autoencoder(input_dim=input_dim, encoding_dim=encoding_dim).to(device)
-    model_path = paths["models_dir"] / 'user_autoencoder_model.pt'
+    model_path = paths["models_dir"] / "user_autoencoder_model.pt"
     model.load_state_dict(torch.load(model_path, map_location=device))
 
     model.eval()
@@ -690,15 +768,15 @@ def eval_user_vectors():
             all_embeddings.append(encoded.cpu())
 
     user_content_vector = torch.cat(all_embeddings, dim=0).numpy()
-    np.savez_compressed(paths["models_dir"] / "user_content_vector.npz", vectors=user_content_vector)
-
+    np.savez_compressed(
+        paths["models_dir"] / "user_content_vector.npz", vectors=user_content_vector
+    )
 
 
 @task("data:movie_eval_vector_raw")
 def eval_content_train_test_vectors_raw():
-
     """
-         Функция кодирования контентного вектора (для построчной разбивки)
+    Content vector encoding function (for line-by-line splitting)
     """
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -708,38 +786,49 @@ def eval_content_train_test_vectors_raw():
 
     model_path = config["model_output_path_raw"]
 
-    movie_vectors_scaled_full = np.load(paths["processed_dir"] / "movie_vectors_scaled_full.npy")
+    movie_vectors_scaled_full = np.load(
+        paths["processed_dir"] / "movie_vectors_scaled_full.npy"
+    )
 
     input_dim = movie_vectors_scaled_full.shape[1]
 
-    # Загружаем обученную модель
+    # We load the trained model
     model = MovieAutoencoder(input_dim=input_dim, encoding_dim=64).to(device)
     model.load_state_dict(torch.load(model_path))
     model.eval()
 
     with torch.no_grad():
-        # Восстановленные вектора (через весь автоэнкодер: encoder -> decoder)
-        recon = model(torch.tensor(movie_vectors_scaled_full, dtype=torch.float32).to(device)).cpu().numpy()
+        # Restored vectors (through the entire auto -fister: Encoder -> Decoder)
+        recon = (
+            model(
+                torch.tensor(movie_vectors_scaled_full, dtype=torch.float32).to(device)
+            )
+            .cpu()
+            .numpy()
+        )
 
-        # Прогоняем только через энкодер
-        movie_vectors_tensor = torch.tensor(movie_vectors_scaled_full, dtype=torch.float32).to(device)
+        # We drive out only through the encoder
+        movie_vectors_tensor = torch.tensor(
+            movie_vectors_scaled_full, dtype=torch.float32
+        ).to(device)
         model_movies_full_vectors = model.encoder(movie_vectors_tensor).cpu().numpy()
 
-    # Считаем метрики восстановления
+    # We count the metrics of recovery
     mse = mean_squared_error(movie_vectors_scaled_full, recon)
-
 
     eval_metrics = {
         "mse": mse,
     }
 
-    # Сохраняем метрики для DVC
+    # We save metrics for DVC
     os.makedirs("models", exist_ok=True)
     with open("models/eval_metrics_raw.json", "w") as f:
         json.dump(eval_metrics, f, indent=4)
 
-    # Сохраняем content вектора для фильтрации
-    np.savez_compressed("models/model_movies_full_vectors_raw.npz", vectors=model_movies_full_vectors)
+    # We save the Content vector for filtering
+    np.savez_compressed(
+        "models/model_movies_full_vectors_raw.npz", vectors=model_movies_full_vectors
+    )
 
     print("Модель оценена!")
     print(f"MSE: {mse:.6f}")
@@ -748,8 +837,8 @@ def eval_content_train_test_vectors_raw():
 @task("data:make_bridge_als")
 def make_bridge_als() -> list[Optional[lgb.LGBMRegressor]]:
     """
-    Обучает мостовые модели для преобразования контентных векторов фильмов в ALS-пространство.
-    Логирует метрики и модели в MLflow.
+    Trains bridge models to transform movie content vectors into ALS space.
+
     """
     with mlflow.start_run(run_name="Bridge_LGBM"):
         start_time = time.time()
@@ -757,15 +846,19 @@ def make_bridge_als() -> list[Optional[lgb.LGBMRegressor]]:
         paths = get_project_paths()
         genome_scores = pd.read_csv(paths["raw_dir"] / "genome-scores.csv")
 
-        movie_tag_matrix = genome_scores.pivot(index='movieId', columns='tagId', values='relevance').fillna(0)
+        movie_tag_matrix = genome_scores.pivot(
+            index="movieId", columns="tagId", values="relevance"
+        ).fillna(0)
         movie_ids_with_tags = movie_tag_matrix.index.to_numpy()
 
         item_factors = np.load(paths["models_dir"] / "item_factors.npy")
-        item_encoder = joblib.load(paths["processed_dir"] / 'item_encoder.pkl')
+        item_encoder = joblib.load(paths["processed_dir"] / "item_encoder.pkl")
         item_indices = item_encoder.transform(movie_ids_with_tags)
         filtered_item_matrix_full = item_factors[item_indices]
 
-        model_movies_full_vectors_raw = np.load(paths["models_dir"] / "model_movies_full_vectors_raw.npz")['vectors']
+        model_movies_full_vectors_raw = np.load(
+            paths["models_dir"] / "model_movies_full_vectors_raw.npz"
+        )["vectors"]
 
         models_bridge = []
         scores = []
@@ -776,14 +869,14 @@ def make_bridge_als() -> list[Optional[lgb.LGBMRegressor]]:
         mlflow.set_tag("model_type", "LGBMRegressor")
         mlflow.set_experiment("BridgeModels")
 
-        # Параметры модели
+        # Model parameters
         params = dict(
             n_estimators=100,
             learning_rate=0.1,
             num_leaves=31,
             min_data_in_leaf=5,
             min_gain_to_split=0.0,
-            random_state=42
+            random_state=42,
         )
         for key, val in params.items():
             mlflow.log_param(key, val)
@@ -798,7 +891,7 @@ def make_bridge_als() -> list[Optional[lgb.LGBMRegressor]]:
             std_y = float(np.std(y))
             if std_y < 1e-4:
                 models_bridge.append(None)
-                scores.append({'r2': 0.0, 'mae': None, 'std_y': std_y})
+                scores.append({"r2": 0.0, "mae": None, "std_y": std_y})
                 continue
 
             model = lgb.LGBMRegressor(**params)
@@ -809,36 +902,36 @@ def make_bridge_als() -> list[Optional[lgb.LGBMRegressor]]:
             mae = float(mean_absolute_error(y, y_pred))
 
             models_bridge.append(model)
-            scores.append({'r2': r2, 'mae': mae, 'std_y': std_y})
+            scores.append({"r2": r2, "mae": mae, "std_y": std_y})
 
             mlflow.log_metric(f"r2_{i}", r2)
             mlflow.log_metric(f"mae_{i}", mae)
             mlflow.log_metric(f"std_y_{i}", std_y)
 
             if r2 < 0.1:
-                weak_models.append({'column': i, 'r2': r2, 'mae': mae, 'std_y': std_y})
+                weak_models.append({"column": i, "r2": r2, "mae": mae, "std_y": std_y})
 
-        # Сохраняем модели
-        joblib.dump(models_bridge, paths["models_dir"] / 'models_bridge.pkl')
+        # We save the models
+        joblib.dump(models_bridge, paths["models_dir"] / "models_bridge.pkl")
 
-        # Сохраняем метрики
+        # We keep the metrics
         scores_path = paths["models_dir"] / "bridge_scores.json"
         with open(scores_path, "w") as f:
             json.dump(scores, f, indent=2)
         mlflow.log_artifact(str(scores_path))
 
-        # Сохраняем слабые модели отдельно
+        # We save weak models separately
         weak_models_path = paths["models_dir"] / "weak_models.json"
         with open(weak_models_path, "w") as f:
             json.dump(weak_models, f, indent=2)
         mlflow.log_artifact(str(weak_models_path))
 
-        # Усреднённые метрики
-        valid_scores = [s for s in scores if s['mae'] is not None]
+        # Averaged metrics
+        valid_scores = [s for s in scores if s["mae"] is not None]
         if valid_scores:
-            mean_r2 = float(np.mean([s['r2'] for s in valid_scores]))
-            mean_mae = float(np.mean([s['mae'] for s in valid_scores]))
-            mean_std_y = float(np.mean([s['std_y'] for s in valid_scores]))
+            mean_r2 = float(np.mean([s["r2"] for s in valid_scores]))
+            mean_mae = float(np.mean([s["mae"] for s in valid_scores]))
+            mean_std_y = float(np.mean([s["std_y"] for s in valid_scores]))
 
             mlflow.log_metric("mean_r2", mean_r2)
             mlflow.log_metric("mean_mae", mean_mae)
@@ -860,7 +953,7 @@ class EmbeddingRatingPredictor(nn.Module):
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim // 2),
             nn.ReLU(),
-            nn.Linear(hidden_dim // 2, 1)
+            nn.Linear(hidden_dim // 2, 1),
         )
 
     def forward(self, user_ids, item_ids):
@@ -886,7 +979,7 @@ class UserItemIDRatingDataset(Dataset):
 @task("data:train_embedding_nn")
 def train_embedding_nn():
     """
-    Функция кодирования контентного вектора на обученной нейросети
+    Content vector encoding function on a trained neural network
     """
 
     paths = get_project_paths()
@@ -925,7 +1018,9 @@ def train_embedding_nn():
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = EmbeddingRatingPredictor(num_users, num_items, embedding_dim, hidden_dim).to(device)
+    model = EmbeddingRatingPredictor(
+        num_users, num_items, embedding_dim, hidden_dim
+    ).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     criterion = nn.MSELoss()
 
@@ -934,14 +1029,16 @@ def train_embedding_nn():
     model_path = paths["models_dir"] / "embedding_model_best.pt"
 
     with mlflow.start_run():
-        mlflow.log_params({
-            "batch_size": batch_size,
-            "num_epochs": num_epochs,
-            "learning_rate": lr,
-            "patience": patience,
-            "embedding_dim": embedding_dim,
-            "hidden_dim": hidden_dim
-        })
+        mlflow.log_params(
+            {
+                "batch_size": batch_size,
+                "num_epochs": num_epochs,
+                "learning_rate": lr,
+                "patience": patience,
+                "embedding_dim": embedding_dim,
+                "hidden_dim": hidden_dim,
+            }
+        )
 
         for epoch in range(num_epochs):
             model.train()
@@ -949,7 +1046,11 @@ def train_embedding_nn():
             progress_bar = tqdm(train_loader, desc=f"Epoch {epoch + 1}")
 
             for user_ids, item_ids, ratings in progress_bar:
-                user_ids, item_ids, ratings = user_ids.to(device), item_ids.to(device), ratings.to(device).unsqueeze(1)
+                user_ids, item_ids, ratings = (
+                    user_ids.to(device),
+                    item_ids.to(device),
+                    ratings.to(device).unsqueeze(1),
+                )
                 optimizer.zero_grad()
                 preds = model(user_ids, item_ids)
                 loss = criterion(preds, ratings)
@@ -964,7 +1065,11 @@ def train_embedding_nn():
             val_preds, val_targets = [], []
             with torch.no_grad():
                 for user_ids, item_ids, ratings in val_loader:
-                    user_ids, item_ids, ratings = user_ids.to(device), item_ids.to(device), ratings.to(device).unsqueeze(1)
+                    user_ids, item_ids, ratings = (
+                        user_ids.to(device),
+                        item_ids.to(device),
+                        ratings.to(device).unsqueeze(1),
+                    )
                     preds = model(user_ids, item_ids)
                     val_preds.extend(preds.squeeze().cpu().numpy())
                     val_targets.extend(ratings.squeeze().cpu().numpy())
@@ -973,7 +1078,9 @@ def train_embedding_nn():
             mlflow.log_metric("train_loss", avg_loss, step=epoch)
             mlflow.log_metric("val_rmse", rmse, step=epoch)
 
-            tqdm.write(f"📊 Epoch {epoch + 1}: train_loss = {avg_loss:.4f}, val_rmse = {rmse:.4f}")
+            tqdm.write(
+                f"📊 Epoch {epoch + 1}: train_loss = {avg_loss:.4f}, val_rmse = {rmse:.4f}"
+            )
 
             if rmse < best_rmse:
                 best_rmse = rmse
@@ -988,26 +1095,28 @@ def train_embedding_nn():
 
         mlflow.pytorch.log_model(model, artifact_path="embedding_model")
 
-    # Сохраняем отдельно эмбеддинги
+    # We save separately embedding
     model.load_state_dict(torch.load(model_path))
     model.eval()
     user_embs = model.user_embedding.weight.data.cpu().numpy()
     item_embs = model.item_embedding.weight.data.cpu().numpy()
 
-    np.savez_compressed(paths["models_dir"] / "embedding_user_vectors.npz", vectors=user_embs)
-    np.savez_compressed(paths["models_dir"] / "embedding_item_vectors.npz", vectors=item_embs)
+    np.savez_compressed(
+        paths["models_dir"] / "embedding_user_vectors.npz", vectors=user_embs
+    )
+    np.savez_compressed(
+        paths["models_dir"] / "embedding_item_vectors.npz", vectors=item_embs
+    )
     tqdm.write("💾 Эмбеддинги сохранены")
-
-
 
 
 @task("data:train_user_segment_autoencoder")
 def train_user_segment_autoencoder():
     """
-        Функция обучения автоенкодера для контентного сегментированного вектора
+    Autoencoder training function for content segmented vector
     """
 
-    # Загрузка конфигурации
+    # Configuration loading
     with open("params.yaml", "r") as f:
         config = yaml.safe_load(f)["user_segment_autoencoder"]
     paths = get_project_paths()
@@ -1017,19 +1126,19 @@ def train_user_segment_autoencoder():
     num_epochs = config["num_epochs"]
     lr = config["learning_rate"]
 
-    # Загрузка сегментированной матрицы
+    # Loading a segmented matrix
     segment_matrix = load_npz(paths["processed_dir"] / "user_segment_matrix.npz")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     input_dim = segment_matrix.shape[1]
 
-    # DataLoader
+    # DATALOADER
     dataset = SparseRowDataset(segment_matrix)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=0)
 
-    # Модель
+    # Model
     model = Autoencoder(input_dim=input_dim, encoding_dim=encoding_dim).to(device)
     optimizer = optim.Adam(model.parameters(), lr=lr)
-    criterion = nn.MSELoss()
+    nn.MSELoss()
 
     epoch_train_losses = []
 
@@ -1041,7 +1150,9 @@ def train_user_segment_autoencoder():
             total_loss = 0
             start_epoch = time.time()
 
-            progress_bar = tqdm(dataloader, desc=f"Epoch {epoch + 1}/{num_epochs}", leave=False)
+            progress_bar = tqdm(
+                dataloader, desc=f"Epoch {epoch + 1}/{num_epochs}", leave=False
+            )
             for i, batch in enumerate(progress_bar):
                 batch = batch.to(device)
 
@@ -1055,38 +1166,39 @@ def train_user_segment_autoencoder():
                 total_loss += loss.item()
 
                 if i % 50 == 0:
-                    tqdm.write(f"[Epoch {epoch + 1} | Batch {i}/{len(dataloader)}] Loss: {loss.item():.4f}")
+                    tqdm.write(
+                        f"[Epoch {epoch + 1} | Batch {i}/{len(dataloader)}] Loss: {loss.item():.4f}"
+                    )
 
             avg_loss = total_loss / len(dataloader)
             epoch_train_losses.append(avg_loss)
-            tqdm.write(f"Epoch {epoch + 1} завершён за {time.time() - start_epoch:.1f} сек. Средний loss: {avg_loss:.4f}")
+            tqdm.write(
+                f"Epoch {epoch + 1} завершён за {time.time() - start_epoch:.1f} сек. Средний loss: {avg_loss:.4f}"
+            )
 
-        # Сохраняем модель
+        # We save the model
         model_path = paths["models_dir"] / "user_segment_autoencoder.pt"
         torch.save(model.state_dict(), model_path)
         mlflow.pytorch.log_model(model, "model")
 
-        # Лог графика потерь
+        # Log of loss graphics
         plot_path = plot_losses(epoch_train_losses, [])
         mlflow.log_artifact(str(plot_path))
 
-        # Метрики
+        # Metrics
         metrics_path = paths["models_dir"] / "user_segment_metrics.json"
         with open(metrics_path, "w") as f:
             json.dump({"final_train_loss": epoch_train_losses[-1]}, f, indent=4)
         mlflow.log_artifact(str(metrics_path))
 
 
-
-
-
 @task("data:encode_user_segment")
 def encode_user_segment():
     """
-    Функция кодирования контетного сегментированного вектора на автоенкодере
+    Function of encoding content segmented vector on auto encoder
     """
 
-    # Загрузка параметров
+    # Loading parameters
     with open("params.yaml") as f:
         config = yaml.safe_load(f)["user_autoencoder"]
     paths = get_project_paths()
@@ -1094,7 +1206,7 @@ def encode_user_segment():
     encoding_dim = config["encoding_dim"]
     batch_size = config["batch_size"]
 
-    # Загрузка данных и модели
+    # Data and models loading
     user_matrix = load_npz(paths["processed_dir"] / "user_segment_matrix.npz")
     input_dim = user_matrix.shape[1]
     dataset = SparseRowDataset(user_matrix)
@@ -1103,25 +1215,31 @@ def encode_user_segment():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     model = Autoencoder(input_dim=input_dim, encoding_dim=encoding_dim).to(device)
-    model.load_state_dict(torch.load(paths["models_dir"] / "user_segment_autoencoder.pt", map_location=device))
+    model.load_state_dict(
+        torch.load(
+            paths["models_dir"] / "user_segment_autoencoder.pt", map_location=device
+        )
+    )
     model.eval()
 
-    # Прогон через энкодер
+    # Run through the encoder
     encoded_rows = []
 
     with torch.no_grad():
         for batch in tqdm(dataloader, desc="Encoding users"):
             batch = batch.to(device)
-            encoded = model.encoder(batch)  # или model.encoder(batch) если используешь другую архитектуру
+            encoded = model.encoder(
+                batch
+            )  # or model.encoder (Batch) if you use another architecture
             encoded_rows.append(encoded.cpu())
 
-    # Объединение и сохранение
+    # Association and conservation
     encoded_matrix = torch.cat(encoded_rows).numpy()
-    save_npz(paths["processed_dir"] / "encoded_user_vectors.npz", csr_matrix(encoded_matrix))
+    save_npz(
+        paths["processed_dir"] / "encoded_user_vectors.npz", csr_matrix(encoded_matrix)
+    )
 
     print("Готово: encoded_user_vectors.npz")
-
-
 
 
 if __name__ == "__main__":
@@ -1130,4 +1248,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.tasks:
-        main(args.tasks)  # Здесь передаем задачи, которые указаны в командной строке
+        main(args.tasks)  # Here we transmit the tasks indicated on the command line

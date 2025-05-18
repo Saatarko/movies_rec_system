@@ -182,3 +182,6 @@ mlartifacts/
 models/
 .dvc/
 .streamlit/
+Makefile
+translate.py
+tranlsate_group.py

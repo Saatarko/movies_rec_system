@@ -1,28 +1,26 @@
+import os
+import sys
 from datetime import datetime
+
 from airflow.models import DAG
 from airflow.operators.bash import BashOperator
-from airflow.operators.python import PythonOperator
 
-import sys
-import os
+# Add project root to Pythonpath
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-# Добавляем корень проекта в PYTHONPATH
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-# === DAG конфигурация ===
+# === DAG Configuration ===
 with DAG(
     dag_id="train_nn_model",
     start_date=datetime(2024, 1, 1),
-    schedule=None,  # или cron выражение
+    schedule=None,  # Or Cron expression
     catchup=False,
-    tags=["recommender", "dvc", "mlflow", 'user']
+    tags=["recommender", "dvc", "mlflow", "user"],
 ) as dag:
 
     train_nn_model = BashOperator(
         task_id="train_nn_model",
         bash_command="cd /home/saatarko/PycharmProjects/movies_rec_system && dvc repro train_nn_model_stage",
-        doc_md = "**Фомирование вектора пользователей**"
+        doc_md="**Фомирование вектора пользователей**",
     )
-
 
     train_nn_model

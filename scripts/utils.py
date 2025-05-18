@@ -7,28 +7,31 @@ import gdown
 import joblib
 import mlflow
 import numpy as np
-import yaml
 import pandas as pd
 import seaborn as sns
+import streamlit as st
+import yaml
 from matplotlib import pyplot as plt
 from matplotlib_venn import venn2
-import streamlit as st
 from sklearn.metrics.pairwise import cosine_similarity
+from tensorflow.python.ops.clustering_ops import KMeans
 
 
 def preprocess_popularity(ratings_df: pd.DataFrame) -> pd.DataFrame:
     """
-    Возвращает DataFrame с movieId и средним рейтингом для каждого фильма.
+    Returns a DataFrame with movieId and average rating for each movie.
     """
-    popularity_df = ratings_df.groupby("movieId").agg(ave_rating=("rating", "mean"),
-                                                      rating_count=("rating", "count")).reset_index()
+    popularity_df = (
+        ratings_df.groupby("movieId")
+        .agg(ave_rating=("rating", "mean"), rating_count=("rating", "count"))
+        .reset_index()
+    )
     return popularity_df
-
 
 
 def get_all_genres(movies_df: pd.DataFrame) -> list:
     """
-    Возвращает уникальные жанры из всех фильмов.
+    Brings back unique genres from all movies.
     """
     genre_set = set()
     for genre_string in movies_df["genres"]:
@@ -36,7 +39,11 @@ def get_all_genres(movies_df: pd.DataFrame) -> list:
             genre_set.add(g.strip())
     return sorted(genre_set)
 
+
 def get_project_paths():
+    """
+    Function to get paths for different data
+    """
     PROJECT_ROOT = Path(__file__).resolve().parent.parent
     with open(PROJECT_ROOT / "params.yaml") as f:
         config = yaml.safe_load(f)
@@ -47,24 +54,39 @@ def get_project_paths():
         "raw_dir": PROJECT_ROOT / paths["raw_data_dir"],
         "processed_dir": PROJECT_ROOT / paths["processed_data_dir"],
         "models_dir": PROJECT_ROOT / paths["models_dir"],
-        "scripts_dir": PROJECT_ROOT / paths["scripts"]
+        "scripts_dir": PROJECT_ROOT / paths["scripts"],
     }
 
-def convert_numpy_types(obj):
+
+def convert_numpy_types(obj: any) -> float | int | List:
+    """
+    Function to get paths for different data.
+    :returns obj in mew format
+    """
     if isinstance(obj, np.generic):
-        return obj.item()  # np.float32 -> float, np.int32 -> int и т.д.
+        return obj.item()  # np.float32 -> float, np.int32 -> int, etc.
     elif isinstance(obj, np.ndarray):
-        return obj.tolist()  # np.array -> list
+        return obj.tolist()  # NP.array -> List
     raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
 
-def precision_at_k(list1, list2, k=5):
+def precision_at_k(list1: List, list2: List, k: int = 5) -> float:
+    """
+    Precision calculation function
+    :param: list1/list2 - list of recommendation
+    :returns precision
+    """
     set1 = set(list1[:k])
     set2 = set(list2[:k])
     return len(set1 & set2) / k
 
 
-def jaccard_similarity(list1, list2):
+def jaccard_similarity(list1: List, list2: List) -> float:
+    """
+    jaccard_similarity calculation function
+    :param: list1/list2 - list of recommendation
+    :returns jaccard_similarity
+    """
     set1 = set(list1)
     set2 = set(list2)
     return len(set1 & set2) / len(set1 | set2)
@@ -74,26 +96,36 @@ def intersection_count(list1, list2):
     return len(set(list1) & set(list2))
 
 
-# RBO Score
-def rbo_score(list1, list2, p=0.9):
+# Rbo Score
+def rbo_score(list1: List, list2: List, p: int = 0.9):
     """
-    Вычисляет RBO (Rank Biased Overlap) для двух списков.
-    p - параметр смещения (обычно в пределах от 0 до 1).
+    Calculates RBO (Rank Biased Overlap) for two lists.
+    p is the bias parameter (usually between 0 and 1).
     """
     min_len = min(len(list1), len(list2))
     score = 0.0
     for i in range(min_len):
-        score += (p ** i) * (list1[i] == list2[i])
+        score += (p**i) * (list1[i] == list2[i])
     return score
 
 
-# Top-N Пересечения
-def top_n_intersections(list1, list2, top_n=10):
+# TOP-N intersection
+def top_n_intersections(list1: List, list2: List, top_n: int = 10) -> List[int]:
+    """
+    intersections calculation function
+    :param: list1/list2 - list of recommendation
+    :returns intersections
+    """
     return [len(set(list1[:i]) & set(list2[:i])) for i in range(1, top_n + 1)]
 
 
-# Матрица совпадений для heatmap
-def build_match_matrix(list1, list2):
+# Coincidence matrix for Heatmap
+def build_match_matrix(list1: List, list2: List) -> np.ndarray:
+    """
+     match_matrix calculation function
+    :param: list1/list2 - list of recommendation
+    :returns matrix
+    """
     matrix = np.zeros((len(list1), len(list2)))
     for i, l1 in enumerate(list1):
         for j, l2 in enumerate(list2):
@@ -102,9 +134,14 @@ def build_match_matrix(list1, list2):
     return matrix
 
 
-def visualize_recommendations_df(df1, df2):
-    list1 = df1['movie_id'].tolist()
-    list2 = df2['movie_id'].tolist()
+def visualize_recommendations_df(df1: np.ndarray, df2: np.ndarray):
+    """
+    function visualise two recommendation
+    :param: list1/list2 - list of recommendation
+    :returns matrix
+    """
+    list1 = df1["movie_id"].tolist()
+    list2 = df2["movie_id"].tolist()
 
     set1 = set(list1)
     set2 = set(list2)
@@ -144,105 +181,130 @@ def visualize_recommendations_df(df1, df2):
                     matrix[i, j] = 1
         return matrix
 
-    # Выводим метрики в Streamlit
+    # Bring metrics to Streamlit
     st.write("Jaccard Similarity:", jaccard_similarity(list1, list2))
     st.write("Precision@5:", precision_at_k(list1, list2, k=5))
     st.write("Intersection Count:", intersection_count(list1, list2))
     st.write("RBO Score:", rbo_score(list1, list2))
 
-    # Построение графиков
+    # Construction of graphs
     fig, axs = plt.subplots(2, 2, figsize=(14, 10))
     fig.suptitle("Сравнение Рекомендательных Списков", fontsize=16)
 
-    # --- 1. Диаграмма Венна ---
-    venn2([set1, set2], set_labels=('Список 1', 'Список2'), ax=axs[0, 0])
+    # --- 1. Venna diagram ---
+    venn2([set1, set2], set_labels=("Список 1", "Список2"), ax=axs[0, 0])
     axs[0, 0].set_title("Диаграмма Венна")
 
-    # --- 2. Barplot пересечений ---
+    # --- 2. Barplot intersections ---
     intersection_counts = top_n_intersections(list1, list2, top_n=10)
     axs[0, 1].bar(range(1, 11), intersection_counts)
     axs[0, 1].set_title("Пересечения в Top-N")
     axs[0, 1].set_xlabel("Top-N")
     axs[0, 1].set_ylabel("Кол-во общих фильмов")
 
-    # --- 3. График RBO ---
-    rbo_scores = [rbo_score(list1[:k], list2[:k]) for k in range(1, min(len(list1), len(list2)) + 1)]
-    axs[1, 0].plot(range(1, len(rbo_scores) + 1), rbo_scores, marker='o')
+    # --- 3. Graph of Rbo ---
+    rbo_scores = [
+        rbo_score(list1[:k], list2[:k])
+        for k in range(1, min(len(list1), len(list2)) + 1)
+    ]
+    axs[1, 0].plot(range(1, len(rbo_scores) + 1), rbo_scores, marker="o")
     axs[1, 0].set_title("RBO по глубине")
     axs[1, 0].set_xlabel("Глубина списка")
     axs[1, 0].set_ylabel("RBO")
 
     # --- 4. Heatmap ---
     match_matrix = build_match_matrix(list1, list2)
-    sns.heatmap(match_matrix, cmap='Blues', cbar=False, ax=axs[1, 1],
-                xticklabels=list2, yticklabels=list1, linewidths=0.5, linecolor='gray')
+    sns.heatmap(
+        match_matrix,
+        cmap="Blues",
+        cbar=False,
+        ax=axs[1, 1],
+        xticklabels=list2,
+        yticklabels=list1,
+        linewidths=0.5,
+        linecolor="gray",
+    )
     axs[1, 1].set_title("Heatmap Совпадений по Позициям")
     axs[1, 1].set_xlabel("Список 1")
     axs[1, 1].set_ylabel("Список 2")
 
-    # Подгоняем под layout
+    # We drive to Layout
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 
-    # Отображаем графики в Streamlit
+    # We display graphs in Streamlit
     st.pyplot(fig)
 
 
-# Прогнозируем кластеры для тестовых данных
-def predict_test_movie_clusters(movie_content_vectors_test):
-    # Загрузка обученной модели
-    kmeans_movies = joblib.load('models/movie_clusters.pkl')
+# We predict clusters for test data
+def predict_test_movie_clusters(movie_content_vectors_test) -> List[int]:
+    """
+    function predict clusters
+    :param: list1/list2 - list of recommendation
+    :returns List of new clusters
+    """
+    # Loading a trained model
+    kmeans_movies = joblib.load("models/movie_clusters.pkl")
 
-    # Прогнозируем кластеры для тестовых данных
+    # We predict clusters for test data
     test_movie_clusters = kmeans_movies.predict(movie_content_vectors_test)
 
     return test_movie_clusters
 
 
-
-def predict_test_movie_clusters_raw(kmeans_model, movie_content_vectors_test):
-    # Прогнозируем кластеры для тестовых данных
+def predict_test_movie_clusters_raw(
+    kmeans_model: KMeans, movie_content_vectors_test
+) -> List[int]:
+    """
+    function predict clusters
+    :returns List of new clusters
+    """
+    # We predict clusters for test data
     test_movie_clusters = kmeans_model.predict(movie_content_vectors_test)
     return test_movie_clusters
 
 
-def find_closest_movie_in_test(train_movie_idx, train_vectors, test_vectors, kmeans_model, test_movie_clusters):
+def find_closest_movie_in_test(
+    train_movie_idx, train_vectors, test_vectors, kmeans_model, test_movie_clusters
+):
     """
-    Находит наиболее похожий фильм из test набора для фильма из train набора в рамках одного кластера.
+    Finds the most similar movie from the test set to a movie from the train set within a single cluster.
 
-    :param train_movie_idx: индекс фильма из train
-    :param train_vectors: векторы фильмов из train
-    :param test_vectors: векторы фильмов из test
-    :param kmeans_model: обученная модель кластеризации (kmeans)
-    :param test_movie_clusters: массив кластеров для всех test фильмов
-    :return: индекс наиболее похожего фильма в test и значение сходства
+    :param train_movie_idx: index of the movie from train
+    :param train_vectors: vectors of movies from train
+    :param test_vectors: vectors of movies from test
+    :param kmeans_model: trained clustering model (kmeans)
+    :param test_movie_clusters: array of clusters for all test movies
+    :return: index of the most similar movie in test and similarity value
     """
     train_movie_vector = train_vectors[train_movie_idx].reshape(1, -1)
 
-    # Предсказываем кластер для train фильма
+    # We predict a cluster for the film film
     train_movie_cluster = kmeans_model.predict(train_movie_vector)[0]
 
-    # Выбираем только test фильмы из того же кластера
+    # Choose only test films from the same cluster
     same_cluster_indices = np.where(test_movie_clusters == train_movie_cluster)[0]
 
     if len(same_cluster_indices) == 0:
-        raise ValueError(f"Нет фильмов в кластере {train_movie_cluster} среди test-фильмов!")
+        raise ValueError(
+            f"Нет фильмов в кластере {train_movie_cluster} среди test-фильмов!"
+        )
 
     test_vectors_same_cluster = test_vectors[same_cluster_indices]
 
-    # Считаем сходство только с ними
-    similarities = cosine_similarity(train_movie_vector, test_vectors_same_cluster).flatten()
+    # We consider the similarity only with them
+    similarities = cosine_similarity(
+        train_movie_vector, test_vectors_same_cluster
+    ).flatten()
     top_match_idx_in_cluster = np.argmax(similarities)
 
-    # Преобразуем индекс внутри кластера обратно в глобальный индекс test
+    # We convert the index inside the cluster back to the global Test index
     top_match_idx = same_cluster_indices[top_match_idx_in_cluster]
 
     return top_match_idx, similarities[top_match_idx_in_cluster]
 
 
 def get_random_train_sample_and_find_closest(
-    movie_content_vectors_train,
-    movie_content_vectors_test,
-    n_samples=3
+    movie_content_vectors_train, movie_content_vectors_test, n_samples=3
 ):
     from sklearn.metrics.pairwise import cosine_similarity
 
@@ -251,7 +313,7 @@ def get_random_train_sample_and_find_closest(
 
     print(f"Размеры массивов: train = {n_train}, test = {n_test}")
 
-    # Берем случайные индексы из train
+    # We take random indexes from Train
     random_train_indices = np.random.choice(n_train, n_samples, replace=False)
     print(f"Случайные индексы фильмов из train: {random_train_indices}")
 
@@ -260,41 +322,46 @@ def get_random_train_sample_and_find_closest(
     for idx in random_train_indices:
         train_vector = movie_content_vectors_train[idx].reshape(1, -1)
 
-        # Считаем сходства с каждым фильмом в тестовом наборе
+        # We consider similarities with each film in a test set
         similarities = cosine_similarity(train_vector, movie_content_vectors_test)[0]
 
-        # Находим индекс наиболее похожего фильма в тесте
+        # Find the index of the most similar film in the test
         most_similar_idx = similarities.argmax()
 
-        # Проверяем, что индекс не выходит за пределы
+        # We check that the index does not go beyond
         if most_similar_idx < 0 or most_similar_idx >= n_test:
-            print(f"Ошибка обработки фильма {idx}: индекс {most_similar_idx} выходит за пределы теста (size {n_test})")
+            print(
+                f"Ошибка обработки фильма {idx}: индекс {most_similar_idx} выходит за пределы теста (size {n_test})"
+            )
             continue
 
-        print(f"Фильм из train (индекс {idx}) — наиболее похожий фильм в test (индекс {most_similar_idx}), сходство: {similarities[most_similar_idx]:.4f}")
+        print(
+            f"Фильм из train (индекс {idx}) — наиболее похожий фильм в test (индекс {most_similar_idx}), сходство: {similarities[most_similar_idx]:.4f}"
+        )
 
         test_sample_indices.append(most_similar_idx)
 
     return random_train_indices.tolist(), test_sample_indices
 
 
-
 def create_train_movie_ids():
-    project_root = Path(__file__).resolve().parent.parent  # или адаптируй путь под себя
+    project_root = Path(__file__).resolve().parent.parent  # or adapt the path for yourself
     params_path = project_root / "params.yaml"
     with open(params_path, "r") as f:
         paths = get_project_paths()
 
-    # Загружаем исходные фильмы
+    # We download the source films
     movies_df = pd.read_csv(paths["raw_dir"] / "movies.csv")
 
-    # Загружаем movie_content_vectors_train
-    movie_content_vectors_train = np.load(paths["models_dir"] / "movie_content_vectors_train.npz")['vectors']
+    # We load movie_content_Vectors_train
+    movie_content_vectors_train = np.load(
+        paths["models_dir"] / "movie_content_vectors_train.npz"
+    )["vectors"]
 
-    # Оставляем только те фильмы, которые были в трейне
-    train_movie_ids = movies_df['movieId'].values[:len(movie_content_vectors_train)]
+    # We leave only those films that were in the traine
+    train_movie_ids = movies_df["movieId"].values[: len(movie_content_vectors_train)]
 
-    # Сохраняем
+    # We save
     np.save(paths["models_dir"] / "train_movie_ids.npy", train_movie_ids)
 
     print(f"train_movie_ids.npy сохранён в {paths['models_dir']}")
@@ -302,11 +369,11 @@ def create_train_movie_ids():
 
 def predict_item_factors_batch(content_vectors, models_bridge):
     """
-    Предсказывает item_factors для нескольких фильмов на основе их content_vectors.
+    Predicts item_factors for multiple movies based on their content_vectors.
 
-    :param content_vectors: np.array формы (N, 64) — контентные векторы фильмов
-    :param models_bridge: список из LGBM-моделей (или None для невалидных колонок)
-    :return: np.array формы (N, 64) — предсказанные item_factors
+    :param content_vectors: np.array of shape (N, 64) — the movie content vectors
+    :param models_bridge: list of LGBM models (or None for invalid columns)
+    :return: np.array of shape (N, 64) — the predicted item_factors
     """
     content_vectors = np.asarray(content_vectors)  # (N, 64)
     n_samples = content_vectors.shape[0]
@@ -318,7 +385,7 @@ def predict_item_factors_batch(content_vectors, models_bridge):
         if model is not None:
             predictions[:, i] = model.predict(content_vectors)
         else:
-            # Заполняем нулями колонку, если модель не обучалась
+            # Fill the column with zero if the model has not learned
             predictions[:, i] = 0.0
 
     return predictions
@@ -339,7 +406,7 @@ def save_model_metrics(metrics_path: Path, train_losses, val_rmses, best_rmse):
         "final_train_loss": train_losses[-1],
         "final_val_rmse": val_rmses[-1],
         "best_val_rmse": best_rmse,
-        "num_epochs": len(train_losses)
+        "num_epochs": len(train_losses),
     }
     with open(metrics_path, "w") as f:
         json.dump(metrics, f, indent=4)
@@ -356,38 +423,39 @@ def download_if_missing(file_path, file_id):
     else:
         print(f"✅ {file_path} already exists.")
 
+
 def build_user_ratings_dict(movie_ids, ratings):
     """
-    Преобразует два списка в словарь {movie_id: rating}
+    Converts two lists into a dictionary {movie_id: rating}
     """
     if len(movie_ids) != len(ratings):
         raise ValueError("Длина списков movie_ids и ratings должна совпадать")
 
     return {int(mid): float(r) for mid, r in zip(movie_ids, ratings)}
 
-# функция добавления данных в таблицу продвижения/блокировки
+
+# The function of adding data to the promotion/lock table
 def update_importance_scores(
-        importance_df: pd.DataFrame,
-        movie_ids_to_promote:List[int]=None,
-        movie_ids_to_block:List[int]=None) -> pd.DataFrame :
+    importance_df: pd.DataFrame,
+    movie_ids_to_promote: List[int] = None,
+    movie_ids_to_block: List[int] = None,
+) -> pd.DataFrame:
     """
-    Обновляет importance_df на основе списков фильмов для продвижения и блокировки.
-    Возвращает importance_df (датафрейм с блокированными фильмами)
+    Updates importance_df based on the list of movies to promote and block.
+    Returns importance_df (a dataframe with blocked movies)
     """
 
-    promote_df = pd.DataFrame({
-        'movieId': movie_ids_to_promote or [],
-        'importance_score': 1
-    })
-
-    block_df = pd.DataFrame({
-        'movieId': movie_ids_to_block or [],
-        'importance_score': -1
-    })
-
-    updated = pd.concat([importance_df, promote_df, block_df], ignore_index=True)
-    importance_df = (
-        updated.drop_duplicates('movieId', keep='last')  # Сохраняем последнюю установку
+    promote_df = pd.DataFrame(
+        {"movieId": movie_ids_to_promote or [], "importance_score": 1}
     )
 
-    return  importance_df
+    block_df = pd.DataFrame(
+        {"movieId": movie_ids_to_block or [], "importance_score": -1}
+    )
+
+    updated = pd.concat([importance_df, promote_df, block_df], ignore_index=True)
+    importance_df = updated.drop_duplicates(
+        "movieId", keep="last"
+    )  # We save the last installation
+
+    return importance_df

@@ -1,26 +1,25 @@
+import os
+import sys
 from datetime import datetime
+
 from airflow.models import DAG
 from airflow.operators.bash import BashOperator
-from airflow.operators.python import PythonOperator
 
-import sys
-import os
+# Add project root to Pythonpath
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-# Добавляем корень проекта в PYTHONPATH
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-# === DAG конфигурация ===
+# === DAG Configuration ===
 with DAG(
     dag_id="cluster_user_segment_vectors",
     start_date=datetime(2024, 1, 1),
-    schedule=None,  # или cron выражение
+    schedule=None,  # Or Cron expression
     catchup=False,
-    tags=["recommender", "dvc", "mlflow", 'user']
+    tags=["recommender", "dvc", "mlflow", "user"],
 ) as dag:
 
     cluster_user_segment_vectors = BashOperator(
         task_id="cluster_user_segment_vectors",
-        bash_command="cd /home/saatarko/PycharmProjects/movies_rec_system && dvc repro cluster_user_segment_vectors_stage"
+        bash_command="cd /home/saatarko/PycharmProjects/movies_rec_system && dvc repro cluster_user_segment_vectors_stage",
     )
 
     cluster_user_segment_vectors
