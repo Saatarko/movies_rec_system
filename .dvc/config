@@ -1,4 +1,0 @@
-[core]
-    remote = myremote
-['remote "myremote"']
-    url = /home/saatarko/PycharmProjects/movies_rec_system/dvc
